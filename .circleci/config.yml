@@ -1,13 +1,13 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
 version: 2.1
-jobs:
-  build:
-    machine:
-      image: ubuntu-1604:201903-01
-    environment:
-      - GIT_URL_INSTEAD_OF: "https://github.com/=git@github.com:"
-      - DOCKER_BUILDKIT: 1
-    steps:
-      - checkout
-      - run: docker login --username vladaionescu --password "$DOCKERHUB_TOKEN"
-      - run: docker build -t earthly/buildkit:`git branch --show-current` --target buildkit-buildkitd-linux .
-      - run: echo docker push earthly/buildkit:`git branch --show-current`
+# Use a package of configuration called an orb.
+orbs:
+  # Declare a dependency on the welcome-orb
+  welcome: circleci/welcome-orb@0.4.1
+# Orchestrate or schedule a set of jobs
+workflows:
+  # Name the workflow "welcome"
+  welcome:
+    # Run the welcome/run job in its own container
+    jobs:
+      - welcome/run
