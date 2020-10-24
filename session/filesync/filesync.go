@@ -239,16 +239,18 @@ func NewFSSyncTargetDir(outdir string) session.Attachable {
 }
 
 // NewFSSyncTarget allows writing into an io.WriteCloser
-func NewFSSyncTarget(fs []func(map[string]string) (io.WriteCloser, error)) session.Attachable {
+func NewFSSyncTarget(f func(map[string]string) (io.WriteCloser, error)) session.Attachable {
 	p := &fsSyncTarget{
-		fs: fs,
+		f:       f,
+		writers: make(map[int]io.WriteCloser),
 	}
 	return p
 }
 
 type fsSyncTarget struct {
-	outdir string
-	fs     []func(map[string]string) (io.WriteCloser, error)
+	outdir  string
+	f       func(map[string]string) (io.WriteCloser, error)
+	writers map[int]io.WriteCloser
 }
 
 func (sp *fsSyncTarget) Register(server *grpc.Server) {
@@ -259,8 +261,7 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 	if sp.outdir != "" {
 		return syncTargetDiffCopy(stream, sp.outdir)
 	}
-
-	if len(sp.fs) == 0 {
+	if sp.f == nil {
 		return errors.New("empty outfile and outdir")
 	}
 	opts, _ := metadata.FromIncomingContext(stream.Context()) // if no metadata continue with empty object
@@ -270,29 +271,43 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 			md[strings.TrimPrefix(k, keyExporterMetaPrefix)] = strings.Join(v, ",")
 		}
 	}
-	wcs := make([]io.WriteCloser, 0, len(sp.fs))
-	for index, f := range sp.fs {
-		// TODO: Should clone md every time to pass completely different maps.
-		md["earthly-export-index"] = fmt.Sprintf("%d", index)
-		wc, err := f(md)
-		if err != nil {
-			return err
-		}
-		if wc == nil {
-			// TODO: This is not supported in the multi variant.
-			return status.Errorf(codes.AlreadyExists, "target already exists")
-		}
-		wcs = append(wcs, wc)
-	}
 	defer func() {
-		for _, wc := range wcs {
+		for _, wc := range sp.writers {
 			err1 := wc.Close()
 			if err != nil {
 				err = err1
 			}
 		}
 	}()
-	return writeTargetFiles(stream, wcs)
+	for {
+		bm := BytesMessage{}
+		if err := stream.RecvMsg(&bm); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return errors.WithStack(err)
+		}
+		index := int(bm.GetIndex())
+		w, found := sp.writers[index]
+		if !found {
+			// TODO: Should clone md every time to pass completely different maps.
+			md["earthly-export-index"] = fmt.Sprintf("%d", index)
+			var wErr error
+			w, wErr = sp.f(md)
+			if wErr != nil {
+				return wErr
+			}
+			if w == nil {
+				// TODO: This is not supported properly in the multi variant.
+				return status.Errorf(codes.AlreadyExists, "target already exists")
+			}
+			sp.writers[index] = w
+		}
+		if _, err := w.Write(bm.Data); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return err
 }
 
 func CopyToCaller(ctx context.Context, fs fsutil.FS, c session.Caller, progress func(int, bool)) error {

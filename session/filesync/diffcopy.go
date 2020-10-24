@@ -168,23 +168,3 @@ func syncTargetDiffCopy(ds grpc.ServerStream, dest string) error {
 		}(),
 	}))
 }
-
-func writeTargetFiles(ds grpc.ServerStream, wcs []io.WriteCloser) error {
-	for {
-		bm := BytesMessage{}
-		if err := ds.RecvMsg(&bm); err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return errors.WithStack(err)
-		}
-		index := int(bm.GetIndex())
-		if index > len(wcs) {
-			return errors.New("index out of bounds")
-		}
-		wc := wcs[index]
-		if _, err := wc.Write(bm.Data); err != nil {
-			return errors.WithStack(err)
-		}
-	}
-}
