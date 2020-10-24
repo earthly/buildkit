@@ -171,11 +171,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		desc.Annotations[ocispec.AnnotationCreated] = time.Now().UTC().Format(time.RFC3339)
 		descs = append(descs, desc)
 
-		if n, ok := expSrc.Metadata["image.name"]; e.name == "*" && ok {
-			e.name = string(n)
+		imgName := e.name
+		if n, ok := expSrc.Metadata["image.name"]; ok {
+			imgName = string(n)
 		}
-
-		imgNames, err := normalizedNames(e.name)
+		imgNames, err := normalizedNames(imgName)
 		if err != nil {
 			return nil, err
 		}
