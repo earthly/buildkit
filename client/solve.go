@@ -3,9 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,6 +133,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			s.Allow(a)
 		}
 
+		var outs []func(map[string]string) (io.WriteCloser, error)
 		switch ex.Type {
 		case ExporterLocal:
 			if ex.Output != nil {
@@ -147,7 +150,37 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			if ex.Output == nil {
 				return nil, errors.Errorf("output file writer is required for %s exporter", ex.Type)
 			}
-			s.Allow(filesync.NewFSSyncTarget(ex.Output))
+			outs = append(outs, ex.Output)
+			s.Allow(filesync.NewFSSyncTarget(outs))
+		case ExporterEarthly:
+			if ex.OutputDir != "" {
+				return nil, errors.Errorf("output directory %s is not supported by %s exporter", ex.OutputDir, ex.Type)
+			}
+			if ex.Output == nil {
+				return nil, errors.Errorf("output file writer is required for %s exporter", ex.Type)
+			}
+			numExportsStr, ok := ex.Attrs["earthly-num-exports"]
+			if !ok {
+				return nil, errors.New("earthly-num-exports key not found")
+			}
+			numExports, err := strconv.Atoi(numExportsStr)
+			if err != nil {
+				return nil, errors.Wrap(err, "parse earthly-num-exports")
+			}
+			outs = make([]func(map[string]string) (io.WriteCloser, error), 0, numExports)
+			for i := 0; i < numExports; i++ {
+				key := fmt.Sprintf("earthly-type/%d", i)
+				exportType, ok := ex.Attrs[key]
+				if !ok {
+					return nil, errors.Errorf("%s not found", key)
+				}
+				if exportType != "image" {
+					return nil, errors.Errorf("earthly exporter type %s not yet supported", exportType)
+				}
+				// TODO: Support different output funs in the future.
+				outs = append(outs, ex.Output)
+			}
+			s.Allow(filesync.NewFSSyncTarget(outs))
 		default:
 			if ex.Output != nil {
 				return nil, errors.Errorf("output file writer is not supported by %s exporter", ex.Type)

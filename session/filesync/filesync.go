@@ -239,16 +239,16 @@ func NewFSSyncTargetDir(outdir string) session.Attachable {
 }
 
 // NewFSSyncTarget allows writing into an io.WriteCloser
-func NewFSSyncTarget(f func(map[string]string) (io.WriteCloser, error)) session.Attachable {
+func NewFSSyncTarget(fs []func(map[string]string) (io.WriteCloser, error)) session.Attachable {
 	p := &fsSyncTarget{
-		f: f,
+		fs: fs,
 	}
 	return p
 }
 
 type fsSyncTarget struct {
 	outdir string
-	f      func(map[string]string) (io.WriteCloser, error)
+	fs     []func(map[string]string) (io.WriteCloser, error)
 }
 
 func (sp *fsSyncTarget) Register(server *grpc.Server) {
@@ -260,7 +260,7 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 		return syncTargetDiffCopy(stream, sp.outdir)
 	}
 
-	if sp.f == nil {
+	if len(sp.fs) == 0 {
 		return errors.New("empty outfile and outdir")
 	}
 	opts, _ := metadata.FromIncomingContext(stream.Context()) // if no metadata continue with empty object
@@ -270,20 +270,29 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 			md[strings.TrimPrefix(k, keyExporterMetaPrefix)] = strings.Join(v, ",")
 		}
 	}
-	wc, err := sp.f(md)
-	if err != nil {
-		return err
-	}
-	if wc == nil {
-		return status.Errorf(codes.AlreadyExists, "target already exists")
+	wcs := make([]io.WriteCloser, 0, len(sp.fs))
+	for index, f := range sp.fs {
+		// TODO: Should clone md every time to pass completely different maps.
+		md["earthly-export-index"] = fmt.Sprintf("%d", index)
+		wc, err := f(md)
+		if err != nil {
+			return err
+		}
+		if wc == nil {
+			// TODO: This is not supported in the multi variant.
+			return status.Errorf(codes.AlreadyExists, "target already exists")
+		}
+		wcs = append(wcs, wc)
 	}
 	defer func() {
-		err1 := wc.Close()
-		if err != nil {
-			err = err1
+		for _, wc := range wcs {
+			err1 := wc.Close()
+			if err != nil {
+				err = err1
+			}
 		}
 	}()
-	return writeTargetFile(stream, wc)
+	return writeTargetFiles(stream, wcs)
 }
 
 func CopyToCaller(ctx context.Context, fs fsutil.FS, c session.Caller, progress func(int, bool)) error {
@@ -323,4 +332,27 @@ func CopyFileWriter(ctx context.Context, md map[string]string, c session.Caller)
 	}
 
 	return newStreamWriter(cc), nil
+}
+
+func MultiCopyFileWriter(ctx context.Context, md map[string]string, c session.Caller, n int) ([]io.WriteCloser, error) {
+	method := session.MethodURL(_FileSend_serviceDesc.ServiceName, "diffcopy")
+	if !c.Supports(method) {
+		return nil, errors.Errorf("method %s not supported by the client", method)
+	}
+
+	client := NewFileSendClient(c.Conn())
+
+	opts := make(map[string][]string, len(md))
+	for k, v := range md {
+		opts[keyExporterMetaPrefix+k] = []string{v}
+	}
+
+	ctx = metadata.NewOutgoingContext(ctx, opts)
+
+	cc, err := client.DiffCopy(ctx)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return newStreamMultiWriters(cc, n), nil
 }

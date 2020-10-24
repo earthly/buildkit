@@ -5,6 +5,7 @@ import (
 	"context"
 	io "io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -70,6 +71,66 @@ func (wc *streamWriterCloser) Close() error {
 	return nil
 }
 
+func newStreamMultiWriters(stream grpc.ClientStream, n int) []io.WriteCloser {
+	closed := make([]bool, n)
+	numClosed := 0
+	var closeMu sync.Mutex
+	closeFun := func(index int) error {
+		closeMu.Lock()
+		defer closeMu.Unlock()
+		if !closed[index] {
+			closed[index] = true
+			numClosed++
+			if numClosed == n {
+				if err := stream.CloseSend(); err != nil {
+					return errors.WithStack(err)
+				}
+				// block until receiver is done
+				var bm BytesMessage
+				if err := stream.RecvMsg(&bm); err != io.EOF {
+					return errors.WithStack(err)
+				}
+				return nil
+			}
+		}
+		return nil
+	}
+	bmwcs := make([]io.WriteCloser, 0, n)
+	for index := 0; index < n; index++ {
+		wc := &streamMultiWriterCloser{
+			ClientStream: stream,
+			index:        index,
+			closeFun:     closeFun,
+		}
+		bmwc := &bufferedWriteCloser{Writer: bufio.NewWriter(wc), Closer: wc}
+		bmwcs = append(bmwcs, bmwc)
+	}
+	return bmwcs
+}
+
+type streamMultiWriterCloser struct {
+	grpc.ClientStream
+	index    int
+	closeFun func(int) error
+}
+
+func (wc *streamMultiWriterCloser) Write(dt []byte) (int, error) {
+	if err := wc.ClientStream.SendMsg(&BytesMessage{Data: dt, Index: int64(wc.index)}); err != nil {
+		// SendMsg return EOF on remote errors
+		if errors.Is(err, io.EOF) {
+			if err := errors.WithStack(wc.ClientStream.RecvMsg(struct{}{})); err != nil {
+				return 0, err
+			}
+		}
+		return 0, errors.WithStack(err)
+	}
+	return len(dt), nil
+}
+
+func (wc *streamMultiWriterCloser) Close() error {
+	return wc.closeFun(wc.index)
+}
+
 func recvDiffCopy(ds grpc.ClientStream, dest string, cu CacheUpdater, progress progressCb, filter func(string, *fstypes.Stat) bool) error {
 	st := time.Now()
 	defer func() {
@@ -108,7 +169,7 @@ func syncTargetDiffCopy(ds grpc.ServerStream, dest string) error {
 	}))
 }
 
-func writeTargetFile(ds grpc.ServerStream, wc io.WriteCloser) error {
+func writeTargetFiles(ds grpc.ServerStream, wcs []io.WriteCloser) error {
 	for {
 		bm := BytesMessage{}
 		if err := ds.RecvMsg(&bm); err != nil {
@@ -117,6 +178,11 @@ func writeTargetFile(ds grpc.ServerStream, wc io.WriteCloser) error {
 			}
 			return errors.WithStack(err)
 		}
+		index := int(bm.GetIndex())
+		if index > len(wcs) {
+			return errors.New("index out of bounds")
+		}
+		wc := wcs[index]
 		if _, err := wc.Write(bm.Data); err != nil {
 			return errors.WithStack(err)
 		}
