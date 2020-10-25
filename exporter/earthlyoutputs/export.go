@@ -105,7 +105,7 @@ type imageExporterInstance struct {
 }
 
 func (e *imageExporterInstance) Name() string {
-	return "exporting to oci image format"
+	return "earthly exporting to oci image format"
 }
 
 func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source, sessionID string) (map[string]string, error) {
@@ -193,9 +193,9 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	resp := make(map[string]string)
 	resp["earthly-num-exports"] = fmt.Sprintf("%d", numExports)
 	for index, desc := range descs {
-		resp[fmt.Sprintf("containerimage.digest/%d", index)] = desc.Digest.String()
+		resp[fmt.Sprintf("containerimage.digest-%d", index)] = desc.Digest.String()
 		if len(names[index]) != 0 {
-			resp[fmt.Sprintf("image.name/%d", index)] = strings.Join(names[index], ",")
+			resp[fmt.Sprintf("image.name-%d", index)] = strings.Join(names[index], ",")
 		}
 	}
 
@@ -204,12 +204,15 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		return nil, err
 	}
 
-	mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
-	for _, r := range src.Refs {
-		remote, err := r.GetRemote(ctx, false, e.layerCompression)
+	mproviders := make([]*contentutil.MultiProvider, 0, numExports)
+	for _, expSrc := range expSrcs {
+		mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
+		remote, err := expSrc.Ref.GetRemote(ctx, false, e.layerCompression)
 		if err != nil {
 			return nil, err
 		}
+		// unlazy before tar export as the tar writer does not handle
+		// layer blobs in parallel (whereas unlazy does)
 		if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
 			if err := unlazier.Unlazy(ctx); err != nil {
 				return nil, err
@@ -218,6 +221,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		for _, desc := range remote.Descriptors {
 			mprovider.Add(desc.Digest, remote.Provider)
 		}
+		mproviders = append(mproviders, mprovider)
 	}
 
 	report := oneOffProgress(ctx, "sending tarballs")
@@ -231,7 +235,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		default:
 			return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
 		}
-		if err := archiveexporter.Export(ctx, mprovider, w, expOpts...); err != nil {
+		if err := archiveexporter.Export(ctx, mproviders[index], w, expOpts...); err != nil {
 			w.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
 				return resp, report(nil)
@@ -247,7 +251,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			return nil, report(err)
 		}
 	}
-	return resp, report(err)
+	return resp, report(nil)
 }
 
 func oneOffProgress(ctx context.Context, id string) func(err error) error {

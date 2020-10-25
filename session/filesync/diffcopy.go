@@ -72,12 +72,13 @@ func (wc *streamWriterCloser) Close() error {
 }
 
 func newStreamMultiWriters(stream grpc.ClientStream, n int) []io.WriteCloser {
+	// streamMu protects the stream, closed and numClosed.
+	var streamMu sync.Mutex
 	closed := make([]bool, n)
 	numClosed := 0
-	var closeMu sync.Mutex
 	closeFun := func(index int) error {
-		closeMu.Lock()
-		defer closeMu.Unlock()
+		streamMu.Lock()
+		defer streamMu.Unlock()
 		if !closed[index] {
 			closed[index] = true
 			numClosed++
@@ -98,9 +99,10 @@ func newStreamMultiWriters(stream grpc.ClientStream, n int) []io.WriteCloser {
 	bmwcs := make([]io.WriteCloser, 0, n)
 	for index := 0; index < n; index++ {
 		wc := &streamMultiWriterCloser{
-			ClientStream: stream,
-			index:        index,
-			closeFun:     closeFun,
+			stream:   stream,
+			index:    index,
+			closeFun: closeFun,
+			mu:       &streamMu,
 		}
 		bmwc := &bufferedWriteCloser{Writer: bufio.NewWriter(wc), Closer: wc}
 		bmwcs = append(bmwcs, bmwc)
@@ -109,16 +111,19 @@ func newStreamMultiWriters(stream grpc.ClientStream, n int) []io.WriteCloser {
 }
 
 type streamMultiWriterCloser struct {
-	grpc.ClientStream
+	stream   grpc.ClientStream
 	index    int
 	closeFun func(int) error
+	mu       *sync.Mutex
 }
 
 func (wc *streamMultiWriterCloser) Write(dt []byte) (int, error) {
-	if err := wc.ClientStream.SendMsg(&BytesMessage{Data: dt, Index: int64(wc.index)}); err != nil {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+	if err := wc.stream.SendMsg(&BytesMessage{Data: dt, Index: int64(wc.index)}); err != nil {
 		// SendMsg return EOF on remote errors
 		if errors.Is(err, io.EOF) {
-			if err := errors.WithStack(wc.ClientStream.RecvMsg(struct{}{})); err != nil {
+			if err := errors.WithStack(wc.stream.RecvMsg(struct{}{})); err != nil {
 				return 0, err
 			}
 		}

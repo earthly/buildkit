@@ -274,7 +274,7 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 	defer func() {
 		for _, wc := range sp.writers {
 			err1 := wc.Close()
-			if err != nil {
+			if err == nil && err != nil {
 				err = err1
 			}
 		}
@@ -307,7 +307,6 @@ func (sp *fsSyncTarget) DiffCopy(stream FileSend_DiffCopyServer) (err error) {
 			return errors.WithStack(err)
 		}
 	}
-	return err
 }
 
 func CopyToCaller(ctx context.Context, fs fsutil.FS, c session.Caller, progress func(int, bool)) error {
