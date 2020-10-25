@@ -127,67 +127,29 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	for k, v := range e.meta {
 		src.Metadata[k] = v
 	}
-	numImagesStr, ok := src.Metadata["earthly-num-images"]
-	if !ok {
-		return nil, errors.New("earthly-num-images key not found")
-	}
-	numImages, err := strconv.Atoi(string(numImagesStr))
-	if err != nil {
-		return nil, errors.Wrap(err, "parse earthly-num-images")
-	}
-	numDirsStr, ok := src.Metadata["earthly-num-dirs"]
-	if !ok {
-		return nil, errors.New("earthly-num-dirs key not found")
-	}
-	numDirs, err := strconv.Atoi(string(numDirsStr))
-	if err != nil {
-		return nil, errors.Wrap(err, "parse earthly-num-dirs")
-	}
-	numExports := numImages + numDirs
-	expSrcs := make([]exporter.Source, 0, numExports)
-	for i := 0; i < numImages; i++ {
-		refKey := fmt.Sprintf("earthly-image-%d", i)
-		expRef, found := src.Refs[refKey]
-		if !found {
-			return nil, errors.Errorf("key %s not found in refs", refKey)
-		}
+	dirs := make(map[string]bool)
+	images := make(map[string]bool)
+	expSrcs := make(map[string]exporter.Source)
+	for k, ref := range src.Refs {
 		expMd := make(map[string][]byte)
-		for k, v := range src.Metadata {
-			expMd[k] = v
+		mdPrefix := fmt.Sprintf("ref/%s/", k)
+		for mdK, mdV := range src.Metadata {
+			if strings.HasPrefix(mdK, mdPrefix) {
+				expMd[strings.TrimPrefix(mdK, mdPrefix)] = mdV
+			}
 		}
-		name := src.Metadata[fmt.Sprintf("image.name/%d", i)]
-		expMd["image.name"] = name
-		imgConfig := src.Metadata[fmt.Sprintf("containerimage.config/%d", i)]
-		expMd["containerimage.config"] = imgConfig
+		if string(expMd["export-image"]) == "true" {
+			images[k] = true
+		}
+		if string(expMd["export-dir"]) == "true" {
+			dirs[k] = true
+		}
 		expSrc := exporter.Source{
-			Ref:      expRef,
+			Ref:      ref,
 			Refs:     map[string]cache.ImmutableRef{},
 			Metadata: expMd,
 		}
-		expSrcs = append(expSrcs, expSrc)
-	}
-	for i := 0; i < numDirs; i++ {
-		refKey := fmt.Sprintf("earthly-dir-%d", i)
-		expRef, found := src.Refs[refKey]
-		if !found {
-			return nil, errors.Errorf("key %s not found in refs", refKey)
-		}
-		expMd := make(map[string][]byte)
-		for k, v := range src.Metadata {
-			expMd[k] = v
-		}
-		earthlyArtifact := src.Metadata[fmt.Sprintf("earthly-artifact/%d", i)]
-		expMd["earthly-artifact"] = earthlyArtifact
-		srcPath := src.Metadata[fmt.Sprintf("earthly-src-path/%d", i)]
-		expMd["earthly-src-path"] = srcPath
-		destPath := src.Metadata[fmt.Sprintf("earthly-dest-path/%d", i)]
-		expMd["earthly-dest-path"] = destPath
-		expSrc := exporter.Source{
-			Ref:      expRef,
-			Refs:     map[string]cache.ImmutableRef{},
-			Metadata: expMd,
-		}
-		expSrcs = append(expSrcs, expSrc)
+		expSrcs[k] = expSrc
 	}
 
 	ctx, done, err := leaseutil.WithLease(ctx, e.opt.LeaseManager, leaseutil.MakeTemporary)
@@ -196,9 +158,10 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	}
 	defer done(context.TODO())
 
-	descs := make([]*ocispec.Descriptor, 0, numExports)
-	names := make([][]string, 0, numExports)
-	for _, expSrc := range expSrcs {
+	descs := make(map[string]*ocispec.Descriptor)
+	names := make(map[string][]string)
+	for k := range images {
+		expSrc := expSrcs[k]
 		desc, err := e.opt.ImageWriter.Commit(ctx, expSrc, e.ociTypes, e.layerCompression)
 		if err != nil {
 			return nil, err
@@ -210,7 +173,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			desc.Annotations = map[string]string{}
 		}
 		desc.Annotations[ocispec.AnnotationCreated] = time.Now().UTC().Format(time.RFC3339)
-		descs = append(descs, desc)
+		descs[k] = desc
 
 		imgName := e.name
 		if n, ok := expSrc.Metadata["image.name"]; ok {
@@ -220,7 +183,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		if err != nil {
 			return nil, err
 		}
-		names = append(names, imgNames)
+		names[k] = imgNames
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -232,45 +195,37 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	}
 
 	resp := make(map[string]string)
-	resp["earthly-num-exports"] = fmt.Sprintf("%d", numExports)
-	for index, desc := range descs {
-		resp[fmt.Sprintf("containerimage.digest-%d", index)] = desc.Digest.String()
-		if len(names[index]) != 0 {
-			resp[fmt.Sprintf("image.name-%d", index)] = strings.Join(names[index], ",")
-		}
-	}
+	// TODO(vladaionescu): Fill resp
 
-	writers := make([]io.WriteCloser, 0, numImages)
-	for i := 0; i < numImages; i++ {
+	writers := make(map[string]io.WriteCloser)
+	for k := range images {
 		md := make(map[string]string)
-		md["earthly-image-index"] = fmt.Sprintf("%d", i)
-		md["containerimage.digest"] = descs[i].Digest.String()
-		if len(names[i]) != 0 {
-			md["image.name"] = strings.Join(names[i], ",")
+		for mdK, mdV := range expSrcs[k].Metadata {
+			md[mdK] = string(mdV)
+		}
+		md["containerimage.digest"] = descs[k].Digest.String()
+		if len(names[k]) != 0 {
+			md["image.name"] = strings.Join(names[k], ",")
 		}
 
 		w, err := filesync.CopyFileWriter(ctx, md, caller)
 		if err != nil {
 			return nil, err
 		}
-		writers = append(writers, w)
+		writers[k] = w
 	}
 	eg, egCtx := errgroup.WithContext(ctx)
-	for i := 0; i < numDirs; i++ {
+	for k := range dirs {
 		md := make(map[string]string)
-		md["earthly-dir-index"] = fmt.Sprintf("%d", i)
-		earthlyArtifact := src.Metadata[fmt.Sprintf("earthly-artifact/%d", i)]
-		md["earthly-artifact"] = string(earthlyArtifact)
-		srcPath := src.Metadata[fmt.Sprintf("earthly-src-path/%d", i)]
-		md["earthly-src-path"] = string(srcPath)
-		destPath := src.Metadata[fmt.Sprintf("earthly-dest-path/%d", i)]
-		md["earthly-dest-path"] = string(destPath)
-		md["containerimage.digest"] = descs[numImages+i].Digest.String()
-		eg.Go(exportDirFunc(egCtx, md, caller, expSrcs[numImages+i].Ref))
+		for mdK, mdV := range expSrcs[k].Metadata {
+			md[mdK] = string(mdV)
+		}
+		eg.Go(exportDirFunc(egCtx, md, caller, expSrcs[k].Ref))
 	}
 
-	mproviders := make([]*contentutil.MultiProvider, 0, numImages)
-	for _, expSrc := range expSrcs {
+	mproviders := make(map[string]*contentutil.MultiProvider)
+	for k := range images {
+		expSrc := expSrcs[k]
 		mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
 		remote, err := expSrc.Ref.GetRemote(ctx, false, e.layerCompression)
 		if err != nil {
@@ -286,14 +241,14 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		for _, desc := range remote.Descriptors {
 			mprovider.Add(desc.Digest, remote.Provider)
 		}
-		mproviders = append(mproviders, mprovider)
+		mproviders[k] = mprovider
 	}
 
 	report := oneOffProgress(ctx, "sending tarballs")
-	for i := 0; i < numImages; i++ {
-		w := writers[i]
-		desc := descs[i]
-		expOpts := []archiveexporter.ExportOpt{archiveexporter.WithManifest(*desc, names[i]...)}
+	for k := range images {
+		w := writers[k]
+		desc := descs[k]
+		expOpts := []archiveexporter.ExportOpt{archiveexporter.WithManifest(*desc, names[k]...)}
 		switch e.opt.Variant {
 		case VariantOCI:
 			expOpts = append(expOpts, archiveexporter.WithAllPlatforms(), archiveexporter.WithSkipDockerManifest())
@@ -301,7 +256,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		default:
 			return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
 		}
-		if err := archiveexporter.Export(ctx, mproviders[i], w, expOpts...); err != nil {
+		if err := archiveexporter.Export(ctx, mproviders[k], w, expOpts...); err != nil {
 			w.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
 				continue
