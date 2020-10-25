@@ -5,7 +5,6 @@ import (
 	"context"
 	io "io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -71,71 +70,6 @@ func (wc *streamWriterCloser) Close() error {
 	return nil
 }
 
-func newStreamMultiWriters(stream grpc.ClientStream, n int) []io.WriteCloser {
-	// streamMu protects the stream, closed and numClosed.
-	var streamMu sync.Mutex
-	closed := make([]bool, n)
-	numClosed := 0
-	closeFun := func(index int) error {
-		streamMu.Lock()
-		defer streamMu.Unlock()
-		if !closed[index] {
-			closed[index] = true
-			numClosed++
-			if numClosed == n {
-				if err := stream.CloseSend(); err != nil {
-					return errors.WithStack(err)
-				}
-				// block until receiver is done
-				var bm BytesMessage
-				if err := stream.RecvMsg(&bm); err != io.EOF {
-					return errors.WithStack(err)
-				}
-				return nil
-			}
-		}
-		return nil
-	}
-	bmwcs := make([]io.WriteCloser, 0, n)
-	for index := 0; index < n; index++ {
-		wc := &streamMultiWriterCloser{
-			stream:   stream,
-			index:    index,
-			closeFun: closeFun,
-			mu:       &streamMu,
-		}
-		bmwc := &bufferedWriteCloser{Writer: bufio.NewWriter(wc), Closer: wc}
-		bmwcs = append(bmwcs, bmwc)
-	}
-	return bmwcs
-}
-
-type streamMultiWriterCloser struct {
-	stream   grpc.ClientStream
-	index    int
-	closeFun func(int) error
-	mu       *sync.Mutex
-}
-
-func (wc *streamMultiWriterCloser) Write(dt []byte) (int, error) {
-	wc.mu.Lock()
-	defer wc.mu.Unlock()
-	if err := wc.stream.SendMsg(&BytesMessage{Data: dt, Index: int64(wc.index)}); err != nil {
-		// SendMsg return EOF on remote errors
-		if errors.Is(err, io.EOF) {
-			if err := errors.WithStack(wc.stream.RecvMsg(struct{}{})); err != nil {
-				return 0, err
-			}
-		}
-		return 0, errors.WithStack(err)
-	}
-	return len(dt), nil
-}
-
-func (wc *streamMultiWriterCloser) Close() error {
-	return wc.closeFun(wc.index)
-}
-
 func recvDiffCopy(ds grpc.ClientStream, dest string, cu CacheUpdater, progress progressCb, filter func(string, *fstypes.Stat) bool) error {
 	st := time.Now()
 	defer func() {
@@ -172,4 +106,19 @@ func syncTargetDiffCopy(ds grpc.ServerStream, dest string) error {
 			}
 		}(),
 	}))
+}
+
+func writeTargetFile(ds grpc.ServerStream, wc io.WriteCloser) error {
+	for {
+		bm := BytesMessage{}
+		if err := ds.RecvMsg(&bm); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return errors.WithStack(err)
+		}
+		if _, err := wc.Write(bm.Data); err != nil {
+			return errors.WithStack(err)
+		}
+	}
 }

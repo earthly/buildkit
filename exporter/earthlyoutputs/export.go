@@ -3,6 +3,7 @@ package earthlyoutputs
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -199,9 +200,20 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		}
 	}
 
-	writers, err := filesync.MultiCopyFileWriter(ctx, resp, caller, numExports)
-	if err != nil {
-		return nil, err
+	writers := make([]io.WriteCloser, 0, numExports)
+	for index, desc := range descs {
+		md := make(map[string]string)
+		md["exporter-md-containerimage.digest"] = desc.Digest.String()
+		if len(names[index]) != 0 {
+			md["exporter-md-image.name"] = strings.Join(names[index], ",")
+		}
+		md["exporter-md-earthly-export-index"] = fmt.Sprintf("%d", index)
+
+		w, err := filesync.CopyFileWriter(ctx, md, caller)
+		if err != nil {
+			return nil, err
+		}
+		writers = append(writers, w)
 	}
 
 	mproviders := make([]*contentutil.MultiProvider, 0, numExports)
@@ -238,15 +250,14 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		if err := archiveexporter.Export(ctx, mproviders[index], w, expOpts...); err != nil {
 			w.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
-				return resp, report(nil)
+				continue
 			}
 			return nil, report(err)
 		}
 		err = w.Close()
-		// TODO: This is not supported in the multi variant.
-		// if grpcerrors.Code(err) == codes.AlreadyExists {
-		// 	return resp, report(nil)
-		// }
+		if grpcerrors.Code(err) == codes.AlreadyExists {
+			continue
+		}
 		if err != nil {
 			return nil, report(err)
 		}

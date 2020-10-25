@@ -17,7 +17,4 @@ service FileSend{
 // BytesMessage contains a chunk of byte data
 message BytesMessage{
   bytes data = 1;
-
-  // Earthly specific - the index of the output.
-  int64 index = 101;
 }
