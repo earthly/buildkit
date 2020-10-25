@@ -320,6 +320,29 @@ func CopyToCaller(ctx context.Context, fs fsutil.FS, c session.Caller, progress 
 	return sendDiffCopy(cc, fs, progress)
 }
 
+func CopyToCallerWithMeta(ctx context.Context, md map[string]string, fs fsutil.FS, c session.Caller, progress func(int, bool)) error {
+	method := session.MethodURL(_FileSend_serviceDesc.ServiceName, "diffcopy")
+	if !c.Supports(method) {
+		return errors.Errorf("method %s not supported by the client", method)
+	}
+
+	client := NewFileSendClient(c.Conn())
+
+	opts := make(map[string][]string, len(md))
+	for k, v := range md {
+		opts[keyExporterMetaPrefix+k] = []string{v}
+	}
+
+	ctx = metadata.NewOutgoingContext(ctx, opts)
+
+	cc, err := client.DiffCopy(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	return sendDiffCopy(cc, fs, progress)
+}
+
 func CopyFileWriter(ctx context.Context, md map[string]string, c session.Caller) (io.WriteCloser, error) {
 	method := session.MethodURL(_FileSend_serviceDesc.ServiceName, "diffcopy")
 	if !c.Supports(method) {
