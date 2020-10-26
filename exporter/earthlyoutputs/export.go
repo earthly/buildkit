@@ -274,7 +274,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		}
 	}
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return nil, report(err)
 	}
 	return resp, report(nil)
 }
@@ -385,6 +385,9 @@ func exportDirFunc(ctx context.Context, md map[string]string, caller session.Cal
 		fs := fsutil.NewFS(src, walkOpt)
 		progress := newProgressHandler(ctx, "copying files")
 		if err := filesync.CopyToCallerWithMeta(ctx, md, fs, caller, progress); err != nil {
+			if grpcerrors.Code(err) == codes.AlreadyExists {
+				return nil
+			}
 			return err
 		}
 		return nil
