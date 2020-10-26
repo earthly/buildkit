@@ -227,19 +227,21 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	for k := range images {
 		expSrc := expSrcs[k]
 		mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
-		remote, err := expSrc.Ref.GetRemote(ctx, false, e.layerCompression)
-		if err != nil {
-			return nil, err
-		}
-		// unlazy before tar export as the tar writer does not handle
-		// layer blobs in parallel (whereas unlazy does)
-		if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
-			if err := unlazier.Unlazy(ctx); err != nil {
+		if expSrc.Ref != nil {
+			remote, err := expSrc.Ref.GetRemote(ctx, false, e.layerCompression)
+			if err != nil {
 				return nil, err
 			}
-		}
-		for _, desc := range remote.Descriptors {
-			mprovider.Add(desc.Digest, remote.Provider)
+			// unlazy before tar export as the tar writer does not handle
+			// layer blobs in parallel (whereas unlazy does)
+			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+				if err := unlazier.Unlazy(ctx); err != nil {
+					return nil, err
+				}
+			}
+			for _, desc := range remote.Descriptors {
+				mprovider.Add(desc.Digest, remote.Provider)
+			}
 		}
 		mproviders[k] = mprovider
 	}
