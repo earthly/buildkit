@@ -14,6 +14,7 @@ import (
 	"github.com/moby/buildkit/solver"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/semaphore"
 )
 
 type Worker interface {
@@ -35,6 +36,7 @@ type Worker interface {
 	ContentStore() content.Store
 	Executor() executor.Executor
 	CacheManager() cache.Manager
+	ExecSem() *semaphore.Weighted
 }
 
 // Pre-defined label keys

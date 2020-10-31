@@ -50,6 +50,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
+	"golang.org/x/sync/semaphore"
 )
 
 const labelCreatedAt = "buildkit/createdat"
@@ -84,6 +85,7 @@ type Worker struct {
 	SourceManager *source.Manager
 	imageWriter   *imageexporter.ImageWriter
 	ImageSource   *containerimage.Source
+	execSem       *semaphore.Weighted
 }
 
 // NewWorker instantiates a local worker
@@ -183,7 +185,12 @@ func NewWorker(opt WorkerOpt) (*Worker, error) {
 		SourceManager: sm,
 		imageWriter:   iw,
 		ImageSource:   is,
+		execSem:       semaphore.NewWeighted(20), // max parallel execs permitted
 	}, nil
+}
+
+func (w *Worker) ExecSem() *semaphore.Weighted {
+	return w.execSem
 }
 
 func (w *Worker) ContentStore() content.Store {

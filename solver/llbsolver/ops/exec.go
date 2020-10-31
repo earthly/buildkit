@@ -556,8 +556,13 @@ func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 	var mounts []executor.Mount
 	var root cache.Mountable
 	var readonlyRootFS bool
-
 	var outputs []cache.Ref
+
+	err := e.w.ExecSem().Acquire(ctx, 1)
+	if err != nil {
+		return nil, errors.Wrap(err, "acquire exec sem")
+	}
+	defer e.w.ExecSem().Release(1)
 
 	defer func() {
 		for _, o := range outputs {
