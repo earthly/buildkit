@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ earthly-master ]
+    branches: [ earthly-main ]
   pull_request:
-    branches: [ earthly-master ]
+    branches: [ earthly-main ]
 
 jobs:
   build:
