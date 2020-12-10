@@ -260,7 +260,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 
 			if shouldPush[k] {
 				for _, name := range names[k] {
-					if err := push.Push(ctx, e.opt.SessionManager, sessionID, mprovider, e.opt.ImageWriter.ContentStore(), descs[k].Digest, name, false, e.opt.RegistryHosts, false, annotations); err != nil {
+					err := push.Push(
+						ctx, e.opt.SessionManager, sessionID, mprovider,
+						e.opt.ImageWriter.ContentStore(), descs[k].Digest,
+						name, false, e.opt.RegistryHosts, false, annotations)
+					if err != nil {
 						return nil, err
 					}
 				}
