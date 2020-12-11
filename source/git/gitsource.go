@@ -583,6 +583,7 @@ func getGitSSHCommand(knownHosts string) string {
 	} else {
 		gitSSHCommand += " -o StrictHostKeyChecking=no"
 	}
+	gitSSHCommand += " -vvv"
 	return gitSSHCommand
 }
 
@@ -603,7 +604,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 			"HOME=" + os.Getenv("HOME"), // needed for git to read /root/.gitconfig
 			"GIT_TERMINAL_PROMPT=0",
 			"GIT_SSH_COMMAND=" + getGitSSHCommand(knownHosts),
-			//	"GIT_TRACE=1",
+			"GIT_TRACE=1",
 		}
 		if sshAuthSock != "" {
 			cmd.Env = append(cmd.Env, "SSH_AUTH_SOCK="+sshAuthSock)

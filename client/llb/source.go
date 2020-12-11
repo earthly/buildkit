@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "crypto/sha256" // for opencontainers/go-digest
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -297,6 +298,9 @@ func Git(remote, ref string, opts ...GitOption) State {
 			if err == nil {
 				// best effort
 				attrs[pb.AttrKnownSSHHosts] = keyscan
+				fmt.Printf("added keyscan: %v\n", keyscan)
+			} else {
+				fmt.Printf("got error while scanning: %v\n", err.Error())
 			}
 		}
 		addCap(&gi.Constraints, pb.CapSourceGitKnownSSHHosts)
