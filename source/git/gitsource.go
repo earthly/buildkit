@@ -621,6 +621,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 					continue
 				}
 			}
+			return nil, errors.Wrapf(err, "failed to run %s: %s", cmd, buf.String()+errbuf.String())
 		}
 		return buf, err
 	}
