@@ -610,7 +610,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 			cmd.Env = append(cmd.Env, "SSH_AUTH_SOCK="+sshAuthSock)
 		}
 		fmt.Printf("running cmd: %v\n", cmd)
-		fmt.Printf("env: %v\n", cmd.env)
+		fmt.Printf("env: %v\n", cmd.Env)
 		// remote git commands spawn helper processes that inherit FDs and don't
 		// handle parent death signal so exec.CommandContext can't be used
 		err := runProcessGroup(ctx, cmd)
