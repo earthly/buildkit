@@ -126,10 +126,17 @@ type normalizeState struct {
 	next  int
 }
 
-func normalizeItem(it *item, state *normalizeState) (*item, error) {
+func normalizeItem(it *item, state *normalizeState, visited map[*item]struct{}) (*item, error) {
+	if visited == nil {
+		return normalizeItem(it, state, make(map[*item]struct{}))
+	}
 	if it2, ok := state.added[it]; ok {
 		return it2, nil
 	}
+	// if _, ok := visited[it]; ok {
+	// 	return it, nil
+	// }
+	visited[it] = struct{}{}
 
 	if len(it.links) == 0 {
 		id := it.dgst
@@ -151,7 +158,7 @@ func normalizeItem(it *item, state *normalizeState) (*item, error) {
 		}
 		for l := range m {
 			nl := nlink{dgst: it.dgst, input: i, selector: l.selector}
-			it2, err := normalizeItem(l.src, state)
+			it2, err := normalizeItem(l.src, state, visited)
 			if err != nil {
 				return nil, err
 			}
@@ -196,7 +203,7 @@ func normalizeItem(it *item, state *normalizeState) (*item, error) {
 
 	for i, m := range links {
 		for l := range m {
-			subIt, err := normalizeItem(l.src, state)
+			subIt, err := normalizeItem(l.src, state, visited)
 			if err != nil {
 				return nil, err
 			}
@@ -266,19 +273,100 @@ func marshalRemote(r *solver.Remote, state *marshalState) string {
 	return id
 }
 
-func marshalItem(it *item, state *marshalState) error {
+func marshalItem2(root *item, state *marshalState) error {
+	type stackFrame struct {
+		it         *item
+		indexLinks int
+		visitedM   map[link]struct{}
+		rec        *CacheRecord
+		l          *link
+	}
+	stack := []stackFrame{{it: root}}
+	for len(stack) > 0 {
+		frame := stack[0]
+		if frame.rec == nil {
+			frame.rec = &CacheRecord{
+				Digest: frame.it.dgst,
+				Inputs: make([][]CacheInput, len(frame.it.links)),
+			}
+		}
+		if frame.visitedM == nil {
+			frame.visitedM = make(map[link]struct{})
+		}
+		if frame.indexLinks >= len(frame.it.links) {
+			if frame.it.result != nil {
+				id := marshalRemote(frame.it.result, state)
+				if id != "" {
+					idx, ok := state.chainsByID[id]
+					if !ok {
+						return errors.Errorf("parent chainid not found")
+					}
+					frame.rec.Results = append(frame.rec.Results, CacheResult{LayerIndex: idx, CreatedAt: frame.it.resultTime})
+				}
+			}
+
+			index := len(state.records)
+			state.recordsByItem[frame.it] = index
+			state.records = append(state.records, *frame.rec)
+			if len(stack) > 1 {
+				prevFrame := stack[1]
+				prevFrame.rec.Inputs[prevFrame.indexLinks] = append(
+					prevFrame.rec.Inputs[prevFrame.indexLinks],
+					CacheInput{
+						Selector:  prevFrame.l.selector,
+						LinkIndex: index,
+					})
+			}
+			// Pop.
+			stack = stack[1:]
+			continue
+		}
+
+		m := frame.it.links[frame.indexLinks]
+		// TODO: This would be easier if m was a list, not a map.
+		frame.l = nil
+		for l := range m {
+			_, found := frame.visitedM[l]
+			if !found {
+				frame.l = &l
+				break
+			}
+		}
+		if frame.l == nil {
+			// All visited.
+			frame.indexLinks++
+			continue
+		}
+		frame.visitedM[*frame.l] = struct{}{}
+
+		stack = append(stack, stackFrame{it: frame.l.src})
+	}
+	return nil
+}
+
+func marshalItem(it *item, state *marshalState, depth int, maxDepth *int, visited map[*item]bool) error {
+	if depth > *maxDepth {
+		fmt.Printf("new max depth: %d\n", depth)
+		*maxDepth = depth
+	}
 	if _, ok := state.recordsByItem[it]; ok {
 		return nil
 	}
+	if visited[it] {
+		panic("visited!!")
+	}
+	visited[it] = true
 
 	rec := CacheRecord{
 		Digest: it.dgst,
 		Inputs: make([][]CacheInput, len(it.links)),
 	}
+	// state.recordsByItem[it] = len(state.records)
+	// state.records = append(state.records, rec)
 
 	for i, m := range it.links {
 		for l := range m {
-			if err := marshalItem(l.src, state); err != nil {
+			if err := marshalItem(l.src, state, depth+1, maxDepth, visited); err != nil {
 				return err
 			}
 			idx, ok := state.recordsByItem[l.src]
@@ -305,6 +393,7 @@ func marshalItem(it *item, state *marshalState) error {
 
 	state.recordsByItem[it] = len(state.records)
 	state.records = append(state.records, rec)
+
 	return nil
 }
 

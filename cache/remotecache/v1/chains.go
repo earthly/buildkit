@@ -56,7 +56,7 @@ func (c *CacheChains) normalize() error {
 	c.items = validated
 
 	for _, it := range c.items {
-		_, err := normalizeItem(it, st)
+		_, err := normalizeItem(it, st, nil)
 		if err != nil {
 			return err
 		}
@@ -81,8 +81,9 @@ func (c *CacheChains) Marshal() (*CacheConfig, DescriptorProvider, error) {
 		recordsByItem: map[*item]int{},
 	}
 
+	maxDepth := 0
 	for _, it := range c.items {
-		if err := marshalItem(it, st); err != nil {
+		if err := marshalItem(it, st, 0, &maxDepth, make(map[*item]bool)); err != nil {
 			return nil, nil, err
 		}
 	}
