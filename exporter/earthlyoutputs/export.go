@@ -272,7 +272,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		}
 	}
 	for imgName, ps := range plats {
-		if len(plats) > 0 {
+		if len(ps) > 0 {
 			expPlats := &exptypes.Platforms{Platforms: ps}
 			dt, err := json.Marshal(expPlats)
 			if err != nil {
