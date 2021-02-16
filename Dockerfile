@@ -118,6 +118,7 @@ COPY --from=runc /usr/bin/runc /buildkit-runc
 COPY --from=tonistiigi/binfmt:buildkit@sha256:75583ce1cf4a7166fd2592f45e4ff3f53727eee6edcd3a3e804f749b1f214a39 / /
 FROM binaries-linux-helper AS binaries-linux
 COPY --from=buildctl /usr/bin/buildctl /
+COPY --from=buildkitd /usr/bin/buildkitd /
 
 FROM scratch AS binaries-darwin
 COPY --from=buildctl /usr/bin/buildctl /
