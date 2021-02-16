@@ -105,10 +105,11 @@ RUN --mount=target=. --mount=target=/root/.cache,type=cache \
 FROM buildkit-base AS buildkitd
 ARG TARGETPLATFORM
 ARG BUILDKITD_TAGS
+ARG EXTRA_BUILD_OPTS=""
 RUN --mount=target=. --mount=target=/root/.cache,type=cache \
   --mount=target=/go/pkg/mod,type=cache \
   --mount=source=/tmp/.ldflags,target=/tmp/.ldflags,from=buildkit-version \
-  go build -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
+  go build ${EXTRA_BUILD_OPTS} -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
   file /usr/bin/buildkitd | egrep "statically linked|Windows"
 
 FROM scratch AS binaries-linux-helper
@@ -117,7 +118,6 @@ COPY --from=runc /usr/bin/runc /buildkit-runc
 COPY --from=tonistiigi/binfmt:buildkit@sha256:75583ce1cf4a7166fd2592f45e4ff3f53727eee6edcd3a3e804f749b1f214a39 / /
 FROM binaries-linux-helper AS binaries-linux
 COPY --from=buildctl /usr/bin/buildctl /
-COPY --from=buildkitd /usr/bin/buildkitd /
 
 FROM scratch AS binaries-darwin
 COPY --from=buildctl /usr/bin/buildctl /
