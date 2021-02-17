@@ -105,11 +105,12 @@ RUN --mount=target=. --mount=target=/root/.cache,type=cache \
 FROM buildkit-base AS buildkitd
 ARG TARGETPLATFORM
 ARG BUILDKITD_TAGS
-ARG EXTRA_BUILD_OPTS=""
+ARG EXTRA_BUILD_OPTS
+
 RUN --mount=target=. --mount=target=/root/.cache,type=cache \
   --mount=target=/go/pkg/mod,type=cache \
-  --mount=source=/tmp/.ldflags,target=/tmp/.ldflags,from=buildkit-version \
-  go build "${EXTRA_BUILD_OPTS}" -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
+  --mount=source=/tmp/.ldflags,target=/tmp/.ldflags,from=buildkit-version \ 
+  go build ${EXTRA_BUILD_OPTS} -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
   file /usr/bin/buildkitd | egrep "statically linked|Windows"
 
 FROM scratch AS binaries-linux-helper
