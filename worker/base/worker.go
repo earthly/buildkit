@@ -51,6 +51,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
+	"golang.org/x/sync/semaphore"
 )
 
 const labelCreatedAt = "buildkit/createdat"
@@ -85,6 +86,8 @@ type Worker struct {
 	SourceManager *source.Manager
 	imageWriter   *imageexporter.ImageWriter
 	ImageSource   *containerimage.Source
+
+	parallelismSem *semaphore.Weighted
 }
 
 // NewWorker instantiates a local worker
@@ -184,6 +187,8 @@ func NewWorker(opt WorkerOpt) (*Worker, error) {
 		SourceManager: sm,
 		imageWriter:   iw,
 		ImageSource:   is,
+		// TODO(vladaionescu): make this configurable
+		parallelismSem: semaphore.NewWeighted(20),
 	}, nil
 }
 
@@ -322,7 +327,17 @@ func (w *Worker) PruneCacheMounts(ctx context.Context, ids []string) error {
 	return nil
 }
 
+func (w *Worker) ParallelismSem() *semaphore.Weighted {
+	return w.parallelismSem
+}
+
 func (w *Worker) ResolveImageConfig(ctx context.Context, ref string, opt llb.ResolveImageConfigOpt, sm *session.Manager, g session.Group) (digest.Digest, []byte, error) {
+	err := w.parallelismSem.Acquire(ctx, 1)
+	if err != nil {
+		return "", nil, err
+	}
+	defer w.parallelismSem.Release(1)
+
 	return w.ImageSource.ResolveImageConfig(ctx, ref, opt, sm, g)
 }
 
