@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -181,14 +182,21 @@ func NewWorker(opt WorkerOpt) (*Worker, error) {
 		opt.LeaseManager.Delete(context.TODO(), l)
 	}
 
+	maxParallelism := 20
+	maxParallelismStr := os.Getenv("EARTHLY_BUILDKIT_MAX_PARALLELISM")
+	if maxParallelismStr != "" {
+		maxParallelism, err = strconv.Atoi(maxParallelismStr)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse EARTHLY_BUILDKIT_MAX_PARALLELISM")
+		}
+	}
 	return &Worker{
-		WorkerOpt:     opt,
-		CacheMgr:      cm,
-		SourceManager: sm,
-		imageWriter:   iw,
-		ImageSource:   is,
-		// TODO(vladaionescu): make this configurable
-		parallelismSem: semaphore.NewWeighted(20),
+		WorkerOpt:      opt,
+		CacheMgr:       cm,
+		SourceManager:  sm,
+		imageWriter:    iw,
+		ImageSource:    is,
+		parallelismSem: semaphore.NewWeighted(int64(maxParallelism)),
 	}, nil
 }
 
