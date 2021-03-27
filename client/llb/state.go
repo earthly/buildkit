@@ -434,29 +434,29 @@ func (fn constraintsOptFunc) SetGitOption(gi *GitInfo) {
 }
 
 func mergeMetadata(m1, m2 pb.OpMetadata) pb.OpMetadata {
+	ret := m1
 	if m2.IgnoreCache {
-		m1.IgnoreCache = true
+		ret.IgnoreCache = true
 	}
-	if len(m2.Description) > 0 {
-		if m1.Description == nil {
-			m1.Description = make(map[string]string)
-		}
-		for k, v := range m2.Description {
-			m1.Description[k] = v
-		}
+	ret.Description = make(map[string]string)
+	for k, v := range m1.Description {
+		ret.Description[k] = v
+	}
+	for k, v := range m2.Description {
+		ret.Description[k] = v
 	}
 	if m2.ExportCache != nil {
-		m1.ExportCache = m2.ExportCache
+		ret.ExportCache = m2.ExportCache
 	}
 
+	ret.Caps = make(map[apicaps.CapID]bool)
+	for k := range m1.Caps {
+		ret.Caps[k] = true
+	}
 	for k := range m2.Caps {
-		if m1.Caps == nil {
-			m1.Caps = make(map[apicaps.CapID]bool, len(m2.Caps))
-		}
-		m1.Caps[k] = true
+		ret.Caps[k] = true
 	}
-
-	return m1
+	return ret
 }
 
 var IgnoreCache = constraintsOptFunc(func(c *Constraints) {
