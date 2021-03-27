@@ -74,7 +74,9 @@ func MarshalConstraints(base, override *Constraints) (*pb.Op, *pb.OpMetadata) {
 		c.WorkerConstraints = append(c.WorkerConstraints, wc)
 	}
 
+	c.mu.Lock()
 	c.Metadata = mergeMetadata(c.Metadata, override.Metadata)
+	c.mu.Unlock()
 
 	if c.Platform == nil {
 		defaultPlatform := platforms.Normalize(platforms.DefaultSpec())
