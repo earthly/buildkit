@@ -296,13 +296,9 @@ func (s State) AddEnvf(key, value string, v ...interface{}) State {
 }
 
 func (s State) Dir(str string) State {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return Dir(str)(s)
 }
 func (s State) Dirf(str string, v ...interface{}) State {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return Dirf(str, v...)(s)
 }
 
