@@ -3,6 +3,7 @@ package llb
 import (
 	"io"
 	"io/ioutil"
+	"sync"
 
 	"github.com/containerd/containerd/platforms"
 	"github.com/moby/buildkit/solver/pb"
@@ -95,6 +96,7 @@ func MarshalConstraints(base, override *Constraints) (*pb.Op, *pb.OpMetadata) {
 }
 
 type MarshalCache struct {
+	mu          sync.Mutex
 	digest      digest.Digest
 	dt          []byte
 	md          *pb.OpMetadata
@@ -103,12 +105,18 @@ type MarshalCache struct {
 }
 
 func (mc *MarshalCache) Cached(c *Constraints) bool {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
 	return mc.dt != nil && mc.constraints == c
 }
 func (mc *MarshalCache) Load() (digest.Digest, []byte, *pb.OpMetadata, []*SourceLocation, error) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
 	return mc.digest, mc.dt, mc.md, mc.srcs, nil
 }
 func (mc *MarshalCache) Store(dt []byte, md *pb.OpMetadata, srcs []*SourceLocation, c *Constraints) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
 	mc.digest = digest.FromBytes(dt)
 	mc.dt = dt
 	mc.md = md
