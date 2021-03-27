@@ -91,6 +91,8 @@ func (s *SourceOp) Inputs() []Output {
 }
 
 func Image(ref string, opts ...ImageOption) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	r, err := reference.ParseNormalizedNamed(ref)
 	if err == nil {
 		r = reference.TagNameOnly(r)
@@ -237,6 +239,8 @@ func getGitProtocol(remote string) (string, int) {
 }
 
 func Git(remote, ref string, opts ...GitOption) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	url := strings.Split(remote, "#")[0]
 
 	var protocolType int
@@ -368,10 +372,14 @@ func MountSSHSock(sshID string) GitOption {
 }
 
 func Scratch() State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return NewState(nil)
 }
 
 func Local(name string, opts ...LocalOption) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	gi := &LocalInfo{}
 
 	for _, o := range opts {

@@ -64,24 +64,32 @@ type FileAction struct {
 }
 
 func (fa *FileAction) Mkdir(p string, m os.FileMode, opt ...MkdirOption) *FileAction {
+	gmu.Lock()
+	defer gmu.Unlock()
 	a := Mkdir(p, m, opt...)
 	a.prev = fa
 	return a
 }
 
 func (fa *FileAction) Mkfile(p string, m os.FileMode, dt []byte, opt ...MkfileOption) *FileAction {
+	gmu.Lock()
+	defer gmu.Unlock()
 	a := Mkfile(p, m, dt, opt...)
 	a.prev = fa
 	return a
 }
 
 func (fa *FileAction) Rm(p string, opt ...RmOption) *FileAction {
+	gmu.Lock()
+	defer gmu.Unlock()
 	a := Rm(p, opt...)
 	a.prev = fa
 	return a
 }
 
 func (fa *FileAction) Copy(input CopyInput, src, dest string, opt ...CopyOption) *FileAction {
+	gmu.Lock()
+	defer gmu.Unlock()
 	a := Copy(input, src, dest, opt...)
 	a.prev = fa
 	return a
@@ -118,6 +126,8 @@ func (fa *FileAction) bind(s State) *FileAction {
 }
 
 func (fa *FileAction) WithState(s State) CopyInput {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return &fileActionWithState{FileAction: fa.bind(s)}
 }
 
@@ -391,6 +401,8 @@ func (a *fileActionRm) toProtoAction(ctx context.Context, parent string, base pb
 }
 
 func Copy(input CopyInput, src, dest string, opts ...CopyOption) *FileAction {
+	gmu.Lock()
+	defer gmu.Unlock()
 	var state *State
 	var fas *fileActionWithState
 	var err error

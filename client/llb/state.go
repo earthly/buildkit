@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/containerd/containerd/platforms"
 	"github.com/moby/buildkit/identity"
@@ -14,6 +15,8 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 )
+
+var gmu sync.Mutex
 
 type StateOption func(State) State
 
@@ -103,11 +106,15 @@ func (s State) Async(f func(context.Context, State) (State, error)) State {
 }
 
 func (s State) SetMarshalDefaults(co ...ConstraintsOpt) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	s.opts = co
 	return s
 }
 
 func (s State) Marshal(ctx context.Context, co ...ConstraintsOpt) (*Definition, error) {
+	gmu.Lock()
+	defer gmu.Unlock()
 	def := &Definition{
 		Metadata: make(map[digest.Digest]pb.OpMetadata, 0),
 	}
@@ -246,6 +253,8 @@ func (s State) WithImageConfig(c []byte) (State, error) {
 }
 
 func (s State) Run(ro ...RunOption) ExecState {
+	gmu.Lock()
+	defer gmu.Unlock()
 	ei := &ExecInfo{State: s}
 	for _, o := range ro {
 		o.SetRunOption(ei)
@@ -264,6 +273,8 @@ func (s State) Run(ro ...RunOption) ExecState {
 }
 
 func (s State) File(a *FileAction, opts ...ConstraintsOpt) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	var c Constraints
 	for _, o := range opts {
 		o.SetConstraintsOption(&c)
@@ -273,17 +284,25 @@ func (s State) File(a *FileAction, opts ...ConstraintsOpt) State {
 }
 
 func (s State) AddEnv(key, value string) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return AddEnv(key, value)(s)
 }
 
 func (s State) AddEnvf(key, value string, v ...interface{}) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return AddEnvf(key, value, v...)(s)
 }
 
 func (s State) Dir(str string) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return Dir(str)(s)
 }
 func (s State) Dirf(str string, v ...interface{}) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return Dirf(str, v...)(s)
 }
 
@@ -317,10 +336,14 @@ func (s State) Reset(s2 State) State {
 }
 
 func (s State) User(v string) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return User(v)(s)
 }
 
 func (s State) Hostname(v string) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return Hostname(v)(s)
 }
 
@@ -329,6 +352,8 @@ func (s State) GetHostname(ctx context.Context) (string, error) {
 }
 
 func (s State) Platform(p specs.Platform) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return platform(p)(s)
 }
 
@@ -337,6 +362,8 @@ func (s State) GetPlatform(ctx context.Context) (*specs.Platform, error) {
 }
 
 func (s State) Network(n pb.NetMode) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return Network(n)(s)
 }
 
@@ -344,6 +371,8 @@ func (s State) GetNetwork(ctx context.Context) (pb.NetMode, error) {
 	return getNetwork(s)(ctx)
 }
 func (s State) Security(n pb.SecurityMode) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return Security(n)(s)
 }
 
@@ -359,6 +388,8 @@ func (s State) With(so ...StateOption) State {
 }
 
 func (s State) AddExtraHost(host string, ip net.IP) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return extraHost(host, ip)(s)
 }
 
@@ -464,6 +495,8 @@ var IgnoreCache = constraintsOptFunc(func(c *Constraints) {
 })
 
 func WithDescription(m map[string]string) ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		if c.Metadata.Description == nil {
 			c.Metadata.Description = map[string]string{}
@@ -475,17 +508,23 @@ func WithDescription(m map[string]string) ConstraintsOpt {
 }
 
 func WithCustomName(name string) ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return WithDescription(map[string]string{
 		"llb.customname": name,
 	})
 }
 
 func WithCustomNamef(name string, a ...interface{}) ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return WithCustomName(fmt.Sprintf(name, a...))
 }
 
 // WithExportCache forces results for this vertex to be exported with the cache
 func WithExportCache() ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		c.Metadata.ExportCache = &pb.ExportCache{Value: true}
 	})
@@ -494,6 +533,8 @@ func WithExportCache() ConstraintsOpt {
 // WithoutExportCache sets results for this vertex to be not exported with
 // the cache
 func WithoutExportCache() ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		// ExportCache with value false means to disable exporting
 		c.Metadata.ExportCache = &pb.ExportCache{Value: false}
@@ -503,6 +544,8 @@ func WithoutExportCache() ConstraintsOpt {
 // WithoutDefaultExportCache resets the cache export for the vertex to use
 // the default defined by the build configuration.
 func WithoutDefaultExportCache() ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		// nil means no vertex based config has been set
 		c.Metadata.ExportCache = nil
@@ -511,6 +554,8 @@ func WithoutDefaultExportCache() ConstraintsOpt {
 
 // WithCaps exposes supported LLB caps to the marshaler
 func WithCaps(caps apicaps.CapSet) ConstraintsOpt {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		c.Caps = &caps
 	})

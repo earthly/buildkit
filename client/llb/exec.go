@@ -61,6 +61,8 @@ type ExecOp struct {
 }
 
 func (e *ExecOp) AddMount(target string, source Output, opt ...MountOption) Output {
+	gmu.Lock()
+	defer gmu.Unlock()
 	m := &mount{
 		target: target,
 		source: source,
@@ -422,6 +424,8 @@ type ExecState struct {
 }
 
 func (e ExecState) AddMount(target string, source State, opt ...MountOption) State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return source.WithOutput(e.exec.AddMount(target, source.Output(), opt...))
 }
 
@@ -430,6 +434,8 @@ func (e ExecState) GetMount(target string) State {
 }
 
 func (e ExecState) Root() State {
+	gmu.Lock()
+	defer gmu.Unlock()
 	return e.State
 }
 
