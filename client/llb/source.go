@@ -551,15 +551,54 @@ func platformSpecificSource(id string) bool {
 func addCap(c *Constraints, id apicaps.CapID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	newCaps := make(map[apicaps.CapID]bool)
-	for k, v := range c.Metadata.Caps {
-		newCaps[k] = v
-	}
-	newCaps[id] = true
-	c.Metadata.Caps = newCaps
 	// @#
 	// if c.Metadata.Caps == nil {
 	// 	c.Metadata.Caps = make(map[apicaps.CapID]bool)
 	// }
 	// c.Metadata.Caps[id] = true
+	if c.Metadata.Caps == nil {
+		c.Metadata.Caps = make(map[apicaps.CapID]bool)
+		c.Metadata.Caps[pb.CapSourceImage] = true
+		c.Metadata.Caps[pb.CapSourceImageResolveMode] = true
+		c.Metadata.Caps[pb.CapSourceLocal] = true
+		c.Metadata.Caps[pb.CapSourceLocalUnique] = true
+		c.Metadata.Caps[pb.CapSourceLocalSessionID] = true
+		c.Metadata.Caps[pb.CapSourceLocalIncludePatterns] = true
+		c.Metadata.Caps[pb.CapSourceLocalFollowPaths] = true
+		c.Metadata.Caps[pb.CapSourceLocalExcludePatterns] = true
+		c.Metadata.Caps[pb.CapSourceLocalSharedKeyHint] = true
+		c.Metadata.Caps[pb.CapSourceGit] = true
+		c.Metadata.Caps[pb.CapSourceGitKeepDir] = true
+		c.Metadata.Caps[pb.CapSourceGitFullURL] = true
+		c.Metadata.Caps[pb.CapSourceGitHTTPAuth] = true
+		c.Metadata.Caps[pb.CapSourceGitKnownSSHHosts] = true
+		c.Metadata.Caps[pb.CapSourceGitMountSSHSock] = true
+		c.Metadata.Caps[pb.CapSourceHTTP] = true
+		c.Metadata.Caps[pb.CapSourceHTTPChecksum] = true
+		c.Metadata.Caps[pb.CapSourceHTTPPerm] = true
+		c.Metadata.Caps[pb.CapSourceHTTPUIDGID] = true
+		c.Metadata.Caps[pb.CapBuildOpLLBFileName] = true
+		c.Metadata.Caps[pb.CapExecMetaBase] = true
+		c.Metadata.Caps[pb.CapExecMetaProxy] = true
+		c.Metadata.Caps[pb.CapExecMetaNetwork] = true
+		c.Metadata.Caps[pb.CapExecMetaSecurity] = true
+		c.Metadata.Caps[pb.CapExecMetaSetsDefaultPath] = true
+		c.Metadata.Caps[pb.CapExecMountBind] = true
+		c.Metadata.Caps[pb.CapExecMountBindReadWriteNoOuput] = true
+		c.Metadata.Caps[pb.CapExecMountCache] = true
+		c.Metadata.Caps[pb.CapExecMountCacheSharing] = true
+		c.Metadata.Caps[pb.CapExecMountSelector] = true
+		c.Metadata.Caps[pb.CapExecMountTmpfs] = true
+		c.Metadata.Caps[pb.CapExecMountSecret] = true
+		c.Metadata.Caps[pb.CapExecMountSSH] = true
+		c.Metadata.Caps[pb.CapExecCgroupsMounted] = true
+		c.Metadata.Caps[pb.CapExecMetaSecurityDeviceWhitelistV1] = true
+		c.Metadata.Caps[pb.CapFileBase] = true
+		c.Metadata.Caps[pb.CapFileRmWildcard] = true
+		c.Metadata.Caps[pb.CapConstraints] = true
+		c.Metadata.Caps[pb.CapPlatform] = true
+		c.Metadata.Caps[pb.CapMetaIgnoreCache] = true
+		c.Metadata.Caps[pb.CapMetaDescription] = true
+		c.Metadata.Caps[pb.CapMetaExportCache] = true
+	}
 }
