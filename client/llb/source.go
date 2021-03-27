@@ -551,8 +551,15 @@ func platformSpecificSource(id string) bool {
 func addCap(c *Constraints, id apicaps.CapID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.Metadata.Caps == nil {
-		c.Metadata.Caps = make(map[apicaps.CapID]bool)
+	newCaps := make(map[apicaps.CapID]bool)
+	for k, v := range c.Metadata.Caps {
+		newCaps[k] = v
 	}
-	c.Metadata.Caps[id] = true
+	newCaps[id] = true
+	c.Metadata.Caps = newCaps
+	// @#
+	// if c.Metadata.Caps == nil {
+	// 	c.Metadata.Caps = make(map[apicaps.CapID]bool)
+	// }
+	// c.Metadata.Caps[id] = true
 }
