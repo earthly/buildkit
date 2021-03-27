@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/containerd/containerd/platforms"
 	"github.com/moby/buildkit/identity"
@@ -527,10 +528,12 @@ func (cw *constraintsWrapper) applyConstraints(f func(c *Constraints)) {
 type Constraints struct {
 	Platform          *specs.Platform
 	WorkerConstraints []string
-	Metadata          pb.OpMetadata
 	LocalUniqueID     string
 	Caps              *apicaps.CapSet
 	SourceLocations   []*SourceLocation
+
+	mu       sync.Mutex
+	Metadata pb.OpMetadata
 }
 
 func Platform(p specs.Platform) ConstraintsOpt {
