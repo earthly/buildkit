@@ -401,8 +401,6 @@ func (a *fileActionRm) toProtoAction(ctx context.Context, parent string, base pb
 }
 
 func Copy(input CopyInput, src, dest string, opts ...CopyOption) *FileAction {
-	gmu.Lock()
-	defer gmu.Unlock()
 	var state *State
 	var fas *fileActionWithState
 	var err error

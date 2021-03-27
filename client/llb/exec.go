@@ -61,8 +61,6 @@ type ExecOp struct {
 }
 
 func (e *ExecOp) AddMount(target string, source Output, opt ...MountOption) Output {
-	gmu.Lock()
-	defer gmu.Unlock()
 	m := &mount{
 		target: target,
 		source: source,
