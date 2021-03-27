@@ -495,8 +495,6 @@ var IgnoreCache = constraintsOptFunc(func(c *Constraints) {
 })
 
 func WithDescription(m map[string]string) ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		if c.Metadata.Description == nil {
 			c.Metadata.Description = map[string]string{}
@@ -508,23 +506,17 @@ func WithDescription(m map[string]string) ConstraintsOpt {
 }
 
 func WithCustomName(name string) ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return WithDescription(map[string]string{
 		"llb.customname": name,
 	})
 }
 
 func WithCustomNamef(name string, a ...interface{}) ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return WithCustomName(fmt.Sprintf(name, a...))
 }
 
 // WithExportCache forces results for this vertex to be exported with the cache
 func WithExportCache() ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		c.Metadata.ExportCache = &pb.ExportCache{Value: true}
 	})
@@ -533,8 +525,6 @@ func WithExportCache() ConstraintsOpt {
 // WithoutExportCache sets results for this vertex to be not exported with
 // the cache
 func WithoutExportCache() ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		// ExportCache with value false means to disable exporting
 		c.Metadata.ExportCache = &pb.ExportCache{Value: false}
@@ -544,8 +534,6 @@ func WithoutExportCache() ConstraintsOpt {
 // WithoutDefaultExportCache resets the cache export for the vertex to use
 // the default defined by the build configuration.
 func WithoutDefaultExportCache() ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		// nil means no vertex based config has been set
 		c.Metadata.ExportCache = nil
@@ -554,8 +542,6 @@ func WithoutDefaultExportCache() ConstraintsOpt {
 
 // WithCaps exposes supported LLB caps to the marshaler
 func WithCaps(caps apicaps.CapSet) ConstraintsOpt {
-	gmu.Lock()
-	defer gmu.Unlock()
 	return constraintsOptFunc(func(c *Constraints) {
 		c.Caps = &caps
 	})
