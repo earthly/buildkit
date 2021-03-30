@@ -67,7 +67,9 @@ func (c ctxWithStackTrace) Err() error {
 	case <-c.ctx.Done():
 		// @# ret := c.ctx.Err()
 		<-c.doneCh
-		fmt.Printf("@#@#@# Err: %s Stack: %s\n", c.err.Error(), getStackTrace(c.err))
+		if c.err != nil {
+			fmt.Printf("@#@#@# Err: %s Stack: %s\n", c.err.Error(), getStackTrace(c.err))
+		}
 		return c.err
 	default:
 	}
