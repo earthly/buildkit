@@ -2,6 +2,7 @@ package ctxutil
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -30,8 +31,8 @@ type ctxWithStackTrace struct {
 
 func newCtxWithStackTrace(parent context.Context) context.Context {
 	c := ctxWithStackTrace{
-		ctx:    parent,
 		doneCh: make(chan struct{}),
+		ctx:    parent,
 	}
 	canceledErr := errors.WithStack(context.Canceled)
 	deadlineExceededErr := errors.WithStack(context.DeadlineExceeded)
@@ -58,12 +59,15 @@ func (c ctxWithStackTrace) Deadline() (time.Time, bool) {
 }
 
 func (c ctxWithStackTrace) Done() <-chan struct{} {
-	return c.doneCh
+	return c.ctx.Done()
 }
 
 func (c ctxWithStackTrace) Err() error {
 	select {
-	case <-c.doneCh:
+	case <-c.ctx.Done():
+		// @# ret := c.ctx.Err()
+		<-c.doneCh
+		fmt.Printf("@#@#@# Err: %s Stack: %s\n", c.err.Error(), getStackTrace(c.err))
 		return c.err
 	default:
 	}
@@ -72,4 +76,22 @@ func (c ctxWithStackTrace) Err() error {
 
 func (c ctxWithStackTrace) Value(key interface{}) interface{} {
 	return c.ctx.Value(key)
+}
+
+func getStackTrace(err error) string {
+	type stackTracer interface {
+		StackTrace() errors.StackTrace
+	}
+	errChain := []error{}
+	for it := err; it != nil; it = errors.Unwrap(it) {
+		errChain = append(errChain, it)
+	}
+	for index := len(errChain) - 1; index > 0; index-- {
+		it := errChain[index]
+		errWithStack, ok := it.(stackTracer)
+		if ok {
+			return fmt.Sprintf("%+v", errWithStack.StackTrace())
+		}
+	}
+	return ""
 }
