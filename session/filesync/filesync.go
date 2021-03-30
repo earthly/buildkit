@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 	"github.com/tonistiigi/fsutil"
 	fstypes "github.com/tonistiigi/fsutil/types"
@@ -201,7 +202,7 @@ func FSSync(ctx context.Context, c session.Caller, opt FSSendRequestOpt) error {
 
 	opts[keyDirName] = []string{opt.Name}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	client := NewFileSyncClient(c.Conn())

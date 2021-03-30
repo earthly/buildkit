@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/docker/docker/testutil/daemon"
+	"github.com/moby/buildkit/util/ctxutil"
 )
 
 const dockerdBinary = "dockerd"
@@ -86,7 +87,7 @@ func (c dockerd) New(cfg *BackendConfig) (b Backend, cl func() error, err error)
 		return nil, nil, fmt.Errorf("dockerd did not start up: %q, %s", err, formatLogs(logs))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := ctxutil.WithCancel(context.Background())
 	deferF.append(func() error { cancel(); return nil })
 
 	dockerAPI, err := cmd.NewClient()

@@ -44,6 +44,7 @@ import (
 	"github.com/moby/buildkit/util/appcontext"
 	"github.com/moby/buildkit/util/appdefaults"
 	"github.com/moby/buildkit/util/archutil"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/moby/buildkit/util/profiler"
 	"github.com/moby/buildkit/util/resolver"
@@ -184,7 +185,7 @@ func main() {
 		if os.Geteuid() > 0 {
 			return errors.New("rootless mode requires to be executed as the mapped root in a user namespace; you may use RootlessKit for setting up the namespace")
 		}
-		ctx, cancel := context.WithCancel(appcontext.Context())
+		ctx, cancel := ctxutil.WithCancel(appcontext.Context())
 		defer cancel()
 
 		cfg, md, err := LoadFile(c.GlobalString("config"))
@@ -532,7 +533,7 @@ func unaryInterceptor(globalCtx context.Context) grpc.UnaryServerInterceptor {
 	withTrace := otgrpc.OpenTracingServerInterceptor(tracer, otgrpc.LogPayloads())
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := ctxutil.WithCancel(ctx)
 		defer cancel()
 
 		go func() {

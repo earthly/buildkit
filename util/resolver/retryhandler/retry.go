@@ -25,11 +25,16 @@ func New(f images.HandlerFunc, logger func([]byte)) images.HandlerFunc {
 					return nil, err
 				default:
 					if !retryError(err) {
+						if logger != nil {
+							st := getStackTrace(err)
+							logger([]byte(fmt.Sprintf("error: %v\nstack trace: %s\n", err.Error(), st)))
+						}
 						return nil, err
 					}
 				}
 				if logger != nil {
-					logger([]byte(fmt.Sprintf("error: %v\n", err.Error())))
+					st := getStackTrace(err)
+					logger([]byte(fmt.Sprintf("error: %v\nstack trace: %s\n", err.Error(), st)))
 				}
 			} else {
 				return descs, nil
@@ -48,11 +53,14 @@ func New(f images.HandlerFunc, logger func([]byte)) images.HandlerFunc {
 }
 
 func retryError(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
 		return true
 	}
 	// catches TLS timeout or other network-related temporary errors.
-	if ne, ok := errors.Cause(err).(net.Error); ok && (ne.Timeout() || ne.Temporary()) {
+	if ne, ok := errors.Cause(err).(net.Error); ok && ne.Temporary() {
 		return true
 	}
 	// https://github.com/containerd/containerd/pull/4724
@@ -66,4 +74,22 @@ func retryError(err error) bool {
 	}
 
 	return false
+}
+
+func getStackTrace(err error) string {
+	type stackTracer interface {
+		StackTrace() errors.StackTrace
+	}
+	errChain := []error{}
+	for it := err; it != nil; it = errors.Unwrap(it) {
+		errChain = append(errChain, it)
+	}
+	for index := len(errChain) - 1; index > 0; index-- {
+		it := errChain[index]
+		errWithStack, ok := it.(stackTracer)
+		if ok {
+			return fmt.Sprintf("%+v", errWithStack.StackTrace())
+		}
+	}
+	return ""
 }

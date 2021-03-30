@@ -8,6 +8,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/moby/buildkit/identity"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -99,7 +100,7 @@ func (s *Session) ID() string {
 
 // Run activates the session
 func (s *Session) Run(ctx context.Context, dialer Dialer) error {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	s.cancelCtx = cancel
 	s.done = make(chan struct{})
 

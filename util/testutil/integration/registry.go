@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 )
 
@@ -68,7 +69,7 @@ http:
 	}
 	deferF.append(stop)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := ctxutil.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	url, err = detectPort(ctx, rc)
 	if err != nil {

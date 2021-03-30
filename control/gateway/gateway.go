@@ -8,6 +8,7 @@ import (
 	"github.com/moby/buildkit/client/buildid"
 	"github.com/moby/buildkit/frontend/gateway"
 	gwapi "github.com/moby/buildkit/frontend/gateway/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -58,7 +59,7 @@ func (gwf *GatewayForwarder) lookupForwarder(ctx context.Context) (gateway.LLBBr
 		return nil, errors.New("no buildid found in context")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := ctxutil.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	go func() {

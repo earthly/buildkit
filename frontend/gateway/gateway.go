@@ -34,6 +34,7 @@ import (
 	llberrdefs "github.com/moby/buildkit/solver/llbsolver/errdefs"
 	opspb "github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/apicaps"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/moby/buildkit/util/stack"
 	"github.com/moby/buildkit/util/tracing"
@@ -357,7 +358,7 @@ func newBridgeForwarder(ctx context.Context, llbBridge frontend.FrontendLLBBridg
 }
 
 func serveLLBBridgeForwarder(ctx context.Context, llbBridge frontend.FrontendLLBBridge, workers worker.Infos, inputs map[string]*opspb.Definition, sid string, sm *session.Manager) (*llbBridgeForwarder, context.Context, error) {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	lbf := newBridgeForwarder(ctx, llbBridge, workers, inputs, sid, sm)
 	maxMsgSize := 67108864 // 64MB
 	server := grpc.NewServer(
@@ -1132,7 +1133,7 @@ func (lbf *llbBridgeForwarder) ExecProcess(srv pb.LLBBridge_ExecProcessServer) e
 					return stack.Enable(status.Errorf(codes.NotFound, "container %q previously released or not created", id))
 				}
 
-				initCtx, initCancel := context.WithCancel(context.Background())
+				initCtx, initCancel := ctxutil.WithCancel(context.Background())
 				defer initCancel()
 
 				pio := newProcessIO(pid, init.Fds)

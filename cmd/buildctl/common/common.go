@@ -1,13 +1,13 @@
 package common
 
 import (
-	"context"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/util/ctxutil"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -73,7 +73,7 @@ func ResolveClient(c *cli.Context) (*client.Client, error) {
 	}
 
 	timeout := time.Duration(c.GlobalInt("timeout"))
-	ctx, cancel := context.WithTimeout(ctx, timeout*time.Second)
+	ctx, cancel := ctxutil.WithTimeout(ctx, timeout*time.Second)
 	defer cancel()
 
 	return client.New(ctx, c.GlobalString("addr"), opts...)

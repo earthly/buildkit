@@ -22,6 +22,7 @@ import (
 	"github.com/moby/buildkit/session/sshforward/sshprovider"
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	utilsystem "github.com/moby/buildkit/util/system"
 	"github.com/moby/buildkit/util/testutil/integration"
 	"github.com/pkg/errors"
@@ -726,7 +727,7 @@ func testClientGatewayContainerPID1Tty(t *testing.T, sb integration.Sandbox) {
 	output := bytes.NewBuffer(nil)
 
 	b := func(ctx context.Context, c client.Client) (*client.Result, error) {
-		ctx, timeout := context.WithTimeout(ctx, 10*time.Second)
+		ctx, timeout := ctxutil.WithTimeout(ctx, 10*time.Second)
 		defer timeout()
 
 		st := llb.Image("busybox:latest")
@@ -863,7 +864,7 @@ func testClientGatewayContainerExecTty(t *testing.T, sb integration.Sandbox) {
 	inputR, inputW := io.Pipe()
 	output := bytes.NewBuffer(nil)
 	b := func(ctx context.Context, c client.Client) (*client.Result, error) {
-		ctx, timeout := context.WithTimeout(ctx, 10*time.Second)
+		ctx, timeout := ctxutil.WithTimeout(ctx, 10*time.Second)
 		defer timeout()
 		st := llb.Image("busybox:latest")
 

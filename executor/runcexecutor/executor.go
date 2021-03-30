@@ -22,6 +22,7 @@ import (
 	"github.com/moby/buildkit/frontend/gateway/errdefs"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/network"
 	rootlessspecconv "github.com/moby/buildkit/util/rootless/specconv"
 	"github.com/moby/buildkit/util/stack"
@@ -290,7 +291,7 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 	}
 
 	// runCtx/killCtx is used for extra check in case the kill command blocks
-	runCtx, cancelRun := context.WithCancel(context.Background())
+	runCtx, cancelRun := ctxutil.WithCancel(context.Background())
 	defer cancelRun()
 
 	ended := make(chan struct{})
@@ -298,7 +299,7 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 		for {
 			select {
 			case <-ctx.Done():
-				killCtx, timeout := context.WithTimeout(context.Background(), 7*time.Second)
+				killCtx, timeout := ctxutil.WithTimeout(context.Background(), 7*time.Second)
 				if err := w.runc.Kill(killCtx, id, int(syscall.SIGKILL), nil); err != nil {
 					logrus.Errorf("failed to kill runc %s: %+v", id, err)
 					select {

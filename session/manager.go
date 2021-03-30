@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -99,7 +100,7 @@ func (sm *Manager) HandleConn(ctx context.Context, conn net.Conn, opts map[strin
 
 // caller needs to take lock, this function will release it
 func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[string][]string) error {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	opts = canonicalHeaders(opts)
@@ -156,7 +157,7 @@ func (sm *Manager) Get(ctx context.Context, id string, noWait bool) (Caller, err
 		id = p[1]
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	go func() {

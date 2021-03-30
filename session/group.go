@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 )
 
@@ -72,7 +73,7 @@ func (sm *Manager) Any(ctx context.Context, g Group, f func(context.Context, str
 			return errors.Errorf("no active sessions")
 		}
 
-		timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		c, err := sm.Get(timeoutCtx, id, false)
 		if err != nil {

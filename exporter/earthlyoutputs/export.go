@@ -26,6 +26,7 @@ import (
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/util/compression"
 	"github.com/moby/buildkit/util/contentutil"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/moby/buildkit/util/leaseutil"
 	"github.com/moby/buildkit/util/progress"
@@ -304,7 +305,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		descs[imgName] = desc
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	caller, err := e.opt.SessionManager.Get(timeoutCtx, sessionID, false)

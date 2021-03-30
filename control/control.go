@@ -18,6 +18,7 @@ import (
 	"github.com/moby/buildkit/solver"
 	"github.com/moby/buildkit/solver/llbsolver"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/imageutil"
 	"github.com/moby/buildkit/util/throttle"
 	"github.com/moby/buildkit/worker"
@@ -367,7 +368,7 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	conn, closeCh, opts := grpchijack.Hijack(stream)
 	defer conn.Close()
 
-	ctx, cancel := context.WithCancel(stream.Context())
+	ctx, cancel := ctxutil.WithCancel(stream.Context())
 	go func() {
 		<-closeCh
 		cancel()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/util/ctxutil"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -489,7 +490,7 @@ func TestSingleCancelCache(t *testing.T) {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 
 	g0 := Edge{
 		Vertex: vtx(vtxOpt{
@@ -532,7 +533,7 @@ func TestSingleCancelExec(t *testing.T) {
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 
 	g1 := Edge{
 		Vertex: vtx(vtxOpt{
@@ -582,7 +583,7 @@ func TestSingleCancelParallel(t *testing.T) {
 			}
 		}()
 
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := ctxutil.WithCancel(ctx)
 		defer cancel()
 
 		g := Edge{

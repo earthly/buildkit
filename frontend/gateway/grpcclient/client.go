@@ -22,6 +22,7 @@ import (
 	"github.com/moby/buildkit/identity"
 	opspb "github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/apicaps"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
@@ -42,7 +43,7 @@ type GrpcClient interface {
 }
 
 func New(ctx context.Context, opts map[string]string, session, product string, c pb.LLBBridgeClient, w []client.WorkerInfo) (GrpcClient, error) {
-	pingCtx, pingCancel := context.WithTimeout(ctx, 15*time.Second)
+	pingCtx, pingCancel := ctxutil.WithTimeout(ctx, 15*time.Second)
 	defer pingCancel()
 	resp, err := c.Ping(pingCtx, &pb.PingRequest{})
 	if err != nil {
@@ -544,7 +545,7 @@ type messageForwarder struct {
 }
 
 func newMessageForwarder(ctx context.Context, client pb.LLBBridgeClient) *messageForwarder {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	eg, ctx := errgroup.WithContext(ctx)
 	return &messageForwarder{
 		client: client,
@@ -1017,7 +1018,7 @@ func grpcClientConn(ctx context.Context) (context.Context, *grpc.ClientConn, err
 		return nil, nil, errors.Wrap(err, "failed to create grpc client")
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	_ = cancel
 	// go monitorHealth(ctx, cc, cancel)
 

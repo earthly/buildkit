@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestCancelOne(t *testing.T) {
 	var r1, r2 string
 	var counter int64
 	f := testFunc(100*time.Millisecond, "bar", &counter)
-	ctx2, cancel := context.WithCancel(ctx)
+	ctx2, cancel := ctxutil.WithCancel(ctx)
 	eg.Go(func() error {
 		ret1, err := g.Do(ctx2, "foo", f)
 		assert.Error(t, err)
@@ -87,7 +88,7 @@ func TestCancelRace(t *testing.T) {
 	// t.Parallel() // disabled for better timing consistency. works with parallel as well
 
 	g := &Group{}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := ctxutil.WithCancel(context.Background())
 
 	kick := make(chan struct{})
 	wait := make(chan struct{})
@@ -145,8 +146,8 @@ func TestCancelBoth(t *testing.T) {
 	var r1, r2 string
 	var counter int64
 	f := testFunc(200*time.Millisecond, "bar", &counter)
-	ctx2, cancel2 := context.WithCancel(ctx)
-	ctx3, cancel3 := context.WithCancel(ctx)
+	ctx2, cancel2 := ctxutil.WithCancel(ctx)
+	ctx3, cancel3 := ctxutil.WithCancel(ctx)
 	eg.Go(func() error {
 		ret1, err := g.Do(ctx2, "foo", f)
 		assert.Error(t, err)

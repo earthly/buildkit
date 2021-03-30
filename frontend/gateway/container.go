@@ -16,6 +16,7 @@ import (
 	"github.com/moby/buildkit/solver/llbsolver/mounts"
 	"github.com/moby/buildkit/solver/pb"
 	opspb "github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/stack"
 	utilsystem "github.com/moby/buildkit/util/system"
 	"github.com/moby/buildkit/worker"
@@ -41,7 +42,7 @@ type Mount struct {
 }
 
 func NewContainer(ctx context.Context, w worker.Worker, sm *session.Manager, g session.Group, req NewContainerRequest) (client.Container, error) {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	eg, ctx := errgroup.WithContext(ctx)
 	platform := opspb.Platform{
 		OS:           runtime.GOOS,

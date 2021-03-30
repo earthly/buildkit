@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/pkg/errors"
 )
@@ -116,7 +117,7 @@ func newCall(fn func(ctx context.Context) (interface{}, error)) *call {
 
 func (c *call) run() {
 	defer c.closeProgressWriter()
-	ctx, cancel := context.WithCancel(c.ctx)
+	ctx, cancel := ctxutil.WithCancel(c.ctx)
 	defer cancel()
 	v, err := c.fn(ctx)
 	c.mu.Lock()
@@ -146,7 +147,7 @@ func (c *call) wait(ctx context.Context) (v interface{}, err error) {
 		c.progressState.add(pw)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	c.ctxs = append(c.ctxs, ctx)

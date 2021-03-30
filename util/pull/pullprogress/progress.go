@@ -8,6 +8,7 @@ import (
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/remotes"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/progress"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -30,7 +31,7 @@ func (p *ProviderWithProgress) ReaderAt(ctx context.Context, desc ocispec.Descri
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	doneCh := make(chan struct{})
 	go trackProgress(ctx, desc, p.Manager, doneCh)
 	return readerAtWithCancel{ReaderAt: ra, cancel: cancel, doneCh: doneCh}, nil
@@ -63,7 +64,7 @@ func (f *FetcherWithProgress) Fetch(ctx context.Context, desc ocispec.Descriptor
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	doneCh := make(chan struct{})
 	go trackProgress(ctx, desc, f.Manager, doneCh)
 	return readerWithCancel{ReadCloser: rc, cancel: cancel, doneCh: doneCh}, nil

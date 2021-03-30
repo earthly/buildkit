@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 )
 
@@ -70,7 +71,7 @@ type Status struct {
 func NewWithFunction(f func(context.Context) (interface{}, error)) (*Pipe, func()) {
 	p := New(Request{})
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := ctxutil.WithCancel(context.TODO())
 
 	p.OnReceiveCompletion = func() {
 		if req := p.Sender.Request(); req.Canceled {

@@ -15,6 +15,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/source"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/worker/base"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func NewCtx(s string) context.Context {
 
 func TestWorkerExec(t *testing.T, w *base.Worker) {
 	ctx := NewCtx("buildkit-test")
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	sm, err := session.NewManager()
 	require.NoError(t, err)
 
@@ -50,7 +51,7 @@ func TestWorkerExec(t *testing.T, w *base.Worker) {
 	id := identity.NewID()
 
 	// verify pid1 exits when stdin sees EOF
-	ctxTimeout, cancelTimeout := context.WithTimeout(ctx, 5*time.Second)
+	ctxTimeout, cancelTimeout := ctxutil.WithTimeout(ctx, 5*time.Second)
 	started := make(chan struct{})
 	pipeR, pipeW := io.Pipe()
 	go func() {

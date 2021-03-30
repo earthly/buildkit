@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 )
 
@@ -161,7 +162,7 @@ func (pr *progressReader) append(pw *progressWriter) {
 }
 
 func pipe() (*progressReader, *progressWriter, func()) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := ctxutil.WithCancel(context.Background())
 	pr := &progressReader{
 		ctx:     ctx,
 		writers: make(map[*progressWriter]struct{}),

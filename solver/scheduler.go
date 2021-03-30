@@ -7,6 +7,7 @@ import (
 
 	"github.com/moby/buildkit/solver/internal/pipe"
 	"github.com/moby/buildkit/util/cond"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -231,7 +232,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 	}
 	s.mu.Unlock()
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	go func() {

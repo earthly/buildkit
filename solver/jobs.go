@@ -10,6 +10,7 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/solver/errdefs"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/flightcontrol"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/moby/buildkit/util/tracing"
@@ -451,7 +452,7 @@ func (jl *Solver) NewJob(id string) (*Job, error) {
 }
 
 func (jl *Solver) Get(id string) (*Job, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := ctxutil.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	go func() {

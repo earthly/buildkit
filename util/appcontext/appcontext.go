@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"sync"
 
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ func Context() context.Context {
 		const exitLimit = 3
 		retries := 0
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := ctxutil.WithCancel(context.Background())
 		appContextCache = ctx
 
 		go func() {

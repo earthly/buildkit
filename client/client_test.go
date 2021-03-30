@@ -38,6 +38,7 @@ import (
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/contentutil"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/entitlements"
 	"github.com/moby/buildkit/util/testutil"
 	"github.com/moby/buildkit/util/testutil/echoserver"
@@ -3377,7 +3378,7 @@ func testInvalidExporter(t *testing.T, sb integration.Sandbox) {
 
 // moby/buildkit#492
 func testParallelLocalBuilds(t *testing.T, sb integration.Sandbox) {
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := ctxutil.WithCancel(context.TODO())
 	defer cancel()
 
 	c, err := New(ctx, sb.Address())

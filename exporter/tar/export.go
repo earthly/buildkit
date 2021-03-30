@@ -13,6 +13,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/filesync"
 	"github.com/moby/buildkit/snapshot"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/tonistiigi/fsutil"
 	fstypes "github.com/tonistiigi/fsutil/types"
@@ -132,7 +133,7 @@ func (e *localExporterInstance) Export(ctx context.Context, inp exporter.Source,
 		fs = d.FS
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	caller, err := e.opt.SessionManager.Get(timeoutCtx, sessionID, false)

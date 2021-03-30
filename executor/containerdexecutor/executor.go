@@ -23,6 +23,7 @@ import (
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/network"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
@@ -343,7 +344,7 @@ func (w *containerdExecutor) runProcess(ctx context.Context, p containerd.Proces
 
 	// resize in separate go loop so it does not potentially block
 	// the container cancel/exit status loop below.
-	resizeCtx, resizeCancel := context.WithCancel(ctx)
+	resizeCtx, resizeCancel := ctxutil.WithCancel(ctx)
 	defer resizeCancel()
 	go func() {
 		for {
@@ -370,7 +371,7 @@ func (w *containerdExecutor) runProcess(ctx context.Context, p containerd.Proces
 		case <-ctxDone:
 			ctxDone = nil
 			var killCtx context.Context
-			killCtx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+			killCtx, cancel = ctxutil.WithTimeout(context.Background(), 10*time.Second)
 			killCtxDone = killCtx.Done()
 			p.Kill(killCtx, syscall.SIGKILL)
 		case status := <-statusCh:

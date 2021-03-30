@@ -9,6 +9,7 @@ import (
 	"github.com/moby/buildkit/cache/remotecache"
 	"github.com/moby/buildkit/session"
 	sessioncontent "github.com/moby/buildkit/session/content"
+	"github.com/moby/buildkit/util/ctxutil"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -83,7 +84,7 @@ func getContentStore(ctx context.Context, sm *session.Manager, g session.Group, 
 	if sessionID == "" {
 		return nil, errors.New("local cache exporter/importer requires session")
 	}
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeoutCtx, cancel := ctxutil.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	caller, err := sm.Get(timeoutCtx, sessionID, false)

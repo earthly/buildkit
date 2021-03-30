@@ -38,6 +38,7 @@ import (
 	"github.com/moby/buildkit/session/upload/uploadprovider"
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/util/contentutil"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/testutil"
 	"github.com/moby/buildkit/util/testutil/httpserver"
 	"github.com/moby/buildkit/util/testutil/integration"
@@ -2711,7 +2712,7 @@ COPY . .
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := ctxutil.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	c, err := client.New(ctx, sb.Address())

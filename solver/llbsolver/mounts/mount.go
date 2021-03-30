@@ -21,6 +21,7 @@ import (
 	"github.com/moby/buildkit/session/sshforward"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/moby/locker"
 	"github.com/pkg/errors"
@@ -202,7 +203,7 @@ type sshMountInstance struct {
 }
 
 func (sm *sshMountInstance) Mount() ([]mount.Mount, func() error, error) {
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := ctxutil.WithCancel(context.TODO())
 
 	uid := int(sm.sm.mount.SSHOpt.Uid)
 	gid := int(sm.sm.mount.SSHOpt.Gid)

@@ -11,6 +11,7 @@ import (
 	runc "github.com/containerd/go-runc"
 	"github.com/docker/docker/pkg/signal"
 	"github.com/moby/buildkit/executor"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -45,7 +46,7 @@ func (w *runcExecutor) exec(ctx context.Context, id, bundle string, specsProcess
 type runcCall func(ctx context.Context, started chan<- int, io runc.IO) error
 
 func (w *runcExecutor) callWithIO(ctx context.Context, id, bundle string, process executor.ProcessInfo, call runcCall) error {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	defer cancel()
 
 	if !process.Meta.Tty {
@@ -108,7 +109,7 @@ func (w *runcExecutor) callWithIO(ctx context.Context, id, bundle string, proces
 	started := make(chan int, 1)
 
 	eg.Go(func() error {
-		startedCtx, timeout := context.WithTimeout(ctx, 10*time.Second)
+		startedCtx, timeout := ctxutil.WithTimeout(ctx, 10*time.Second)
 		defer timeout()
 		var runcProcess *os.Process
 		select {

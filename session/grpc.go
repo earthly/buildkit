@@ -9,6 +9,7 @@ import (
 	"github.com/containerd/containerd/defaults"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -72,7 +73,7 @@ func grpcClientConn(ctx context.Context, conn net.Conn) (context.Context, *grpc.
 		return nil, nil, errors.Wrap(err, "failed to create grpc client")
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := ctxutil.WithCancel(ctx)
 	go monitorHealth(ctx, cc, cancel)
 
 	return ctx, cc, nil
@@ -91,7 +92,7 @@ func monitorHealth(ctx context.Context, cc *grpc.ClientConn, cancelConn func()) 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			ctx, cancel := ctxutil.WithTimeout(ctx, 10*time.Second)
 			_, err := healthClient.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
 			cancel()
 			if err != nil {

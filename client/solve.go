@@ -20,6 +20,7 @@ import (
 	"github.com/moby/buildkit/session/filesync"
 	"github.com/moby/buildkit/session/grpchijack"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/ctxutil"
 	"github.com/moby/buildkit/util/entitlements"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -91,7 +92,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 	ref := identity.NewID()
 	eg, ctx := errgroup.WithContext(ctx)
 
-	statusContext, cancelStatus := context.WithCancel(context.Background())
+	statusContext, cancelStatus := ctxutil.WithCancel(context.Background())
 	defer cancelStatus()
 
 	if span := opentracing.SpanFromContext(ctx); span != nil {
@@ -179,7 +180,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 		opt.FrontendAttrs[k] = v
 	}
 
-	solveCtx, cancelSolve := context.WithCancel(ctx)
+	solveCtx, cancelSolve := ctxutil.WithCancel(ctx)
 	var res *SolveResponse
 	eg.Go(func() error {
 		ctx := solveCtx
