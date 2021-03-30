@@ -22,17 +22,34 @@ func WithTimeout(parent context.Context, timeout time.Duration) (context.Context
 }
 
 type ctxWithStackTrace struct {
-	ctx                 context.Context
-	canceledErr         error
-	deadlineExceededErr error
+	ctx context.Context
+
+	doneCh chan struct{}
+	err    error
 }
 
 func newCtxWithStackTrace(parent context.Context) context.Context {
 	c := ctxWithStackTrace{
-		ctx:                 parent,
-		canceledErr:         errors.WithStack(context.Canceled),
-		deadlineExceededErr: errors.WithStack(context.DeadlineExceeded),
+		ctx:    parent,
+		doneCh: make(chan struct{}),
 	}
+	canceledErr := errors.WithStack(context.Canceled)
+	deadlineExceededErr := errors.WithStack(context.DeadlineExceeded)
+	go func() {
+		<-c.doneCh
+		ctxErr := c.ctx.Err()
+		switch ctxErr {
+		case context.Canceled:
+			c.err = canceledErr
+		case context.DeadlineExceeded:
+			c.err = deadlineExceededErr
+		default:
+			// this would not include a stack trace (or it would include the stack trace of
+			// the context that was done).
+			c.err = ctxErr
+		}
+		close(c.doneCh)
+	}()
 	return c
 }
 
@@ -41,20 +58,16 @@ func (c ctxWithStackTrace) Deadline() (time.Time, bool) {
 }
 
 func (c ctxWithStackTrace) Done() <-chan struct{} {
-	return c.ctx.Done()
+	return c.doneCh
 }
 
 func (c ctxWithStackTrace) Err() error {
-	ctxErr := c.ctx.Err()
-	if errors.Is(ctxErr, context.Canceled) {
-		return c.canceledErr
+	select {
+	case <-c.doneCh:
+		return c.err
+	default:
 	}
-	if errors.Is(ctxErr, context.DeadlineExceeded) {
-		return c.deadlineExceededErr
-	}
-	// this would not include a stack trace (or it would include the stack trace of
-	// the context that was done).
-	return ctxErr
+	return nil
 }
 
 func (c ctxWithStackTrace) Value(key interface{}) interface{} {
