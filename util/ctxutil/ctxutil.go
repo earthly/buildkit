@@ -36,7 +36,7 @@ func newCtxWithStackTrace(parent context.Context) context.Context {
 	canceledErr := errors.WithStack(context.Canceled)
 	deadlineExceededErr := errors.WithStack(context.DeadlineExceeded)
 	go func() {
-		<-c.doneCh
+		<-c.ctx.Done()
 		ctxErr := c.ctx.Err()
 		switch ctxErr {
 		case context.Canceled:
