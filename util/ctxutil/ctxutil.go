@@ -65,12 +65,12 @@ func (c ctxWithStackTrace) Done() <-chan struct{} {
 func (c ctxWithStackTrace) Err() error {
 	select {
 	case <-c.ctx.Done():
-		// @# ret := c.ctx.Err()
+		ret := c.ctx.Err()
 		<-c.doneCh
 		if c.err != nil {
 			fmt.Printf("@#@#@# Err: %s Stack: %s\n", c.err.Error(), getStackTrace(c.err))
 		}
-		return c.err
+		return ret
 	default:
 	}
 	return nil
