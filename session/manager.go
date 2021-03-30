@@ -2,8 +2,10 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -176,6 +178,8 @@ func (sm *Manager) Get(ctx context.Context, id string, noWait bool) (Caller, err
 		select {
 		case <-ctx.Done():
 			sm.mu.Unlock()
+			fmt.Printf("@#@#@#@## \n")
+			debug.PrintStack()
 			return nil, errors.Wrapf(ctx.Err(), "no active session for %s", id)
 		default:
 		}
