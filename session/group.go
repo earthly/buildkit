@@ -76,7 +76,8 @@ func (sm *Manager) Any(ctx context.Context, g Group, f func(context.Context, str
 		// @#
 		timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		c, err := sm.Get(timeoutCtx, id, false)
+		// @#
+		c, err := sm.Get(timeoutCtx, id, true)
 		if err != nil {
 			lastErr = err
 			continue
