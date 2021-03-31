@@ -52,7 +52,7 @@ func retryError(err error) bool {
 		return true
 	}
 	// catches TLS timeout or other network-related temporary errors.
-	if ne, ok := errors.Cause(err).(net.Error); ok && (ne.Timeout() || ne.Temporary()) {
+	if ne, ok := errors.Cause(err).(net.Error); ok && ne.Temporary() {
 		return true
 	}
 	// https://github.com/containerd/containerd/pull/4724
