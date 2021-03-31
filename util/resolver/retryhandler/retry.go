@@ -35,7 +35,7 @@ func New(f images.HandlerFunc, logger func([]byte)) images.HandlerFunc {
 				return descs, nil
 			}
 			// backoff logic
-			if backoff >= 8*time.Second {
+			if backoff >= 60*time.Second {
 				return nil, err
 			}
 			if logger != nil {
