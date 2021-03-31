@@ -73,7 +73,8 @@ func (sm *Manager) Any(ctx context.Context, g Group, f func(context.Context, str
 			return errors.Errorf("no active sessions")
 		}
 
-		timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 5*time.Second)
+		// @#
+		timeoutCtx, cancel := ctxutil.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		c, err := sm.Get(timeoutCtx, id, false)
 		if err != nil {
