@@ -34,6 +34,7 @@ import (
 	"github.com/moby/buildkit/cmd/buildkitd/config"
 	"github.com/moby/buildkit/control"
 	"github.com/moby/buildkit/executor/oci"
+	"github.com/moby/buildkit/exporter/earthlyoutputs/registry"
 	"github.com/moby/buildkit/frontend"
 	dockerfile "github.com/moby/buildkit/frontend/dockerfile/builder"
 	"github.com/moby/buildkit/frontend/gateway"
@@ -247,6 +248,14 @@ func main() {
 		}
 
 		controller.Register(server)
+
+		serveErr := registry.Serve(ctx, "0.0.0.0:1234") // TODO: configurable
+		go func() {
+			err := <-serveErr
+			if err != nil {
+				logrus.Errorf("Registry serve error: %s\n", err.Error())
+			}
+		}()
 
 		ents := c.GlobalStringSlice("allow-insecure-entitlement")
 		if len(ents) > 0 {
