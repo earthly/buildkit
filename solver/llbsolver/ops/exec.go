@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -17,6 +19,8 @@ import (
 	"github.com/moby/buildkit/executor"
 	"github.com/moby/buildkit/frontend/gateway"
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/session/localhost"
+	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/solver"
 	"github.com/moby/buildkit/solver/llbsolver"
 	"github.com/moby/buildkit/solver/llbsolver/errdefs"
@@ -41,6 +45,7 @@ type execOp struct {
 	w         worker.Worker
 	platform  *pb.Platform
 	numInputs int
+	sm        *session.Manager
 }
 
 func NewExecOp(v solver.Vertex, op *pb.Op_Exec, platform *pb.Platform, cm cache.Manager, sm *session.Manager, md *metadata.Store, exec executor.Executor, w worker.Worker) (solver.Op, error) {
@@ -56,6 +61,7 @@ func NewExecOp(v solver.Vertex, op *pb.Op_Exec, platform *pb.Platform, cm cache.
 		numInputs: len(v.Inputs()),
 		w:         w,
 		platform:  platform,
+		sm:        sm,
 	}, nil
 }
 
@@ -231,6 +237,12 @@ func addDefaultEnvvar(env []string, k, v string) []string {
 }
 
 func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Result) (results []solver.Result, err error) {
+	err = e.w.ParallelismSem().Acquire(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	defer e.w.ParallelismSem().Release(1)
+
 	refs := make([]*worker.WorkerRef, len(inputs))
 	for i, inp := range inputs {
 		var ok bool
@@ -244,6 +256,7 @@ func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		desc := fmt.Sprintf("mount %s from exec %s", m.Dest, strings.Join(e.op.Meta.Args, " "))
 		return e.cm.New(ctx, ref, g, cache.WithDescription(desc))
 	})
+
 	defer func() {
 		if err != nil {
 			execInputs := make([]solver.Result, len(e.op.Mounts))
@@ -331,12 +344,20 @@ func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 	defer stdout.Close()
 	defer stderr.Close()
 
-	execErr := e.exec.Run(ctx, "", p.Root, p.Mounts, executor.ProcessInfo{
-		Meta:   meta,
-		Stdin:  nil,
-		Stdout: stdout,
-		Stderr: stderr,
-	}, nil)
+	isLocal, err := e.doFromLocalHack(ctx, p.Root, p.Mounts, g, meta, stdout, stderr)
+	if err != nil {
+		return nil, err
+	}
+
+	var execErr error
+	if !isLocal {
+		execErr = e.exec.Run(ctx, "", p.Root, p.Mounts, executor.ProcessInfo{
+			Meta:   meta,
+			Stdin:  nil,
+			Stdout: stdout,
+			Stderr: stderr,
+		}, nil)
+	}
 
 	for i, out := range p.OutputRefs {
 		if mutable, ok := out.Ref.(cache.MutableRef); ok {
@@ -352,6 +373,171 @@ func (e *execOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		p.OutputRefs[i].Ref = nil
 	}
 	return results, errors.Wrapf(execErr, "executor failed running %v", e.op.Meta.Args)
+}
+
+func (e *execOp) doFromLocalHack(ctx context.Context, root executor.Mount, mounts []executor.Mount, g session.Group, meta executor.Meta, stdout, stderr io.WriteCloser) (bool, error) {
+	var cmd string
+	if len(meta.Args) > 0 {
+		cmd = meta.Args[0]
+	}
+	switch cmd {
+	case localhost.CopyFileMagicStr:
+		return true, e.copyLocally(ctx, root, g, meta, stdout, stderr)
+	case localhost.RunOnLocalHostMagicStr:
+		return true, e.execLocally(ctx, root, g, meta, stdout, stderr)
+	case localhost.SendFileMagicStr:
+		return true, e.sendLocally(ctx, root, mounts, g, meta, stdout, stderr)
+	default:
+		return false, nil
+	}
+}
+
+func (e *execOp) copyLocally(ctx context.Context, root executor.Mount, g session.Group, meta executor.Meta, stdout, stderr io.WriteCloser) error {
+	if len(meta.Args) != 3 {
+		return fmt.Errorf("CopyFileMagicStr takes exactly 2 args")
+	}
+	if meta.Args[0] != localhost.CopyFileMagicStr {
+		panic("arg[0] must be CopyFileMagicStr; this should not have happened")
+	}
+	src := filepath.Clean(meta.Args[1])
+	dst := meta.Args[2]
+
+	if src == "/" {
+		return fmt.Errorf("copyLocally does not support copying the entire root filesystem")
+	}
+
+	if strings.HasSuffix(dst, ".") || strings.HasSuffix(dst, "/") {
+		dst = filepath.Join(dst, filepath.Base(src))
+	}
+
+	return e.sm.Any(ctx, g, func(ctx context.Context, _ string, caller session.Caller) error {
+		mountable, err := root.Src.Mount(ctx, false)
+		if err != nil {
+			return err
+		}
+
+		rootMounts, release, err := mountable.Mount()
+		if err != nil {
+			return err
+		}
+		if release != nil {
+			defer release()
+		}
+
+		lm := snapshot.LocalMounterWithMounts(rootMounts)
+		rootfsPath, err := lm.Mount()
+		if err != nil {
+			return err
+		}
+		defer lm.Unmount()
+
+		finalDest := rootfsPath + "/" + dst
+		logrus.Debugf("calling LocalhostGet src=%s dst=%s", src, finalDest)
+		err = localhost.LocalhostGet(ctx, caller, src, finalDest, mountable)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+var errSendFileMagicStrMissingArgs = fmt.Errorf("SendFileMagicStr args missing; should be SendFileMagicStr [--dir] [--] <src> [<src> ...] <dst>")
+
+func (e *execOp) sendLocally(ctx context.Context, root executor.Mount, mounts []executor.Mount, g session.Group, meta executor.Meta, stdout, stderr io.WriteCloser) error {
+	i := 0
+	nArgs := len(meta.Args)
+
+	if i >= nArgs || meta.Args[i] != localhost.SendFileMagicStr {
+		return errSendFileMagicStrMissingArgs
+	}
+	i++
+
+	// check for --dir
+	copyDir := false
+	if i >= nArgs {
+		return errSendFileMagicStrMissingArgs
+	}
+	if meta.Args[i] == "--dir" {
+		copyDir = true
+		i++
+	}
+
+	// check for -
+	if i >= nArgs {
+		return errSendFileMagicStrMissingArgs
+	}
+	if meta.Args[i] == "-" {
+		i++
+	}
+
+	dstIndex := len(meta.Args) - 1
+	numFiles := dstIndex - i
+	if numFiles <= 0 {
+		return fmt.Errorf("SendFileMagicStr args missing; should be SendFileMagicStr [--dir] [--] <src> [<src> ...] <dst>")
+	}
+	files := meta.Args[i:dstIndex]
+	dst := meta.Args[dstIndex]
+
+	if len(mounts) != 1 {
+		return fmt.Errorf("SendFileMagicStr must be given a mount with the artifacts to copy from")
+	}
+
+	return e.sm.Any(ctx, g, func(ctx context.Context, _ string, caller session.Caller) error {
+		mnt := mounts[0]
+
+		mountable2, err := mnt.Src.Mount(ctx, false)
+		if err != nil {
+			return err
+		}
+
+		mounts, release, err := mountable2.Mount()
+		if err != nil {
+			return err
+		}
+		if release != nil {
+			defer release()
+		}
+
+		lm := snapshot.LocalMounterWithMounts(mounts)
+		hackfsPath, err := lm.Mount()
+		if err != nil {
+			return err
+		}
+		defer lm.Unmount()
+
+		for _, f := range files {
+			finalSrc := hackfsPath + "/" + f
+			var finalDst string
+			if dst == "." || strings.HasSuffix(dst, "/") || strings.HasSuffix(dst, "/.") || copyDir {
+				finalDst = path.Join(dst, path.Base(f))
+			} else {
+				finalDst = dst
+			}
+			logrus.Debugf("calling LocalhostPut src=%s dst=%s", finalSrc, finalDst)
+			err = localhost.LocalhostPut(ctx, caller, finalSrc, finalDst)
+			if err != nil {
+				return errors.Wrap(err, "error calling LocalhostExec")
+			}
+		}
+		return nil
+	})
+}
+
+func (e *execOp) execLocally(ctx context.Context, root executor.Mount, g session.Group, meta executor.Meta, stdout, stderr io.WriteCloser) error {
+	if len(meta.Args) == 0 || meta.Args[0] != localhost.RunOnLocalHostMagicStr {
+		panic("first arg should be RunOnLocalHostMagicStr; this should not happen")
+	}
+	args := meta.Args[1:] // remove magic uuid from command prefix; the rest that follows is the actual command to run
+	cwd := meta.Cwd
+
+	return e.sm.Any(ctx, g, func(ctx context.Context, _ string, caller session.Caller) error {
+		logrus.Debugf("localexec dir=%s; args=%v", cwd, args)
+		err := localhost.LocalhostExec(ctx, caller, args, cwd, stdout, stderr)
+		if err != nil {
+			return errors.Wrap(err, "error calling LocalhostExec")
+		}
+		return nil
+	})
 }
 
 func proxyEnvList(p *pb.ProxyEnv) []string {
