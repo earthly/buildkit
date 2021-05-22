@@ -340,6 +340,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	annotations := map[digest.Digest]map[string]string{}
 	for imgName, expSrc := range imageExpSrcs {
 		mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
+		mprovider.DebugOutput = true // @#
 		mproviders[imgName] = mprovider
 		for _, r := range expSrc.Refs {
 			remote, err := r.GetRemote(ctx, false, e.layerCompression, session.NewGroup(sessionID))

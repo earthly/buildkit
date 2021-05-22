@@ -8,7 +8,7 @@ import (
 	"github.com/docker/distribution/configuration"
 	"github.com/docker/distribution/registry/handlers"
 	"github.com/docker/distribution/registry/listener"
-	_ "github.com/docker/distribution/registry/storage/driver/filesystem" // register the driver
+	_ "github.com/moby/buildkit/exporter/earthlyoutputs/registry/eodriver" // register the driver
 )
 
 // Serve creates a registry service and starts listening for connections on listenAddr.
@@ -18,7 +18,7 @@ func Serve(ctx context.Context, listenAddr string) chan error {
 	config, err := configuration.Parse(strings.NewReader(`
 version: 0.1
 storage:
-  filesystem:
+  eodriver:
     rootdirectory: /var/lib/earthly-registry`))
 	if err != nil {
 		serveErr <- err
