@@ -1,27 +1,27 @@
-package filesystem
+package eodriver
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
-	"path"
 	"strings"
 	"time"
 
+	"github.com/containerd/containerd/content"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/base"
 	"github.com/docker/distribution/registry/storage/driver/factory"
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	driverName           = "eodriver"
-	defaultRootDirectory = "/var/lib/registry"
-	defaultMaxThreads    = uint64(100)
+	driverName        = "eodriver"
+	defaultMaxThreads = uint64(100)
 
 	// minThreads is the minimum value for the maxthreads configuration
 	// parameter. If the driver's parameters are less than this we set
@@ -30,25 +30,25 @@ const (
 )
 
 // DriverParameters represents all configuration options available for the
-// filesystem driver
+// eodriver driver
 type DriverParameters struct {
 	RootDirectory string
 	MaxThreads    uint64
 }
 
 func init() {
-	factory.Register(driverName, &filesystemDriverFactory{})
+	factory.Register(driverName, &earthlyOutputDriverFactory{})
 }
 
-// filesystemDriverFactory implements the factory.StorageDriverFactory interface
-type filesystemDriverFactory struct{}
+// earthlyOutputDriverFactory implements the factory.StorageDriverFactory interface
+type earthlyOutputDriverFactory struct{}
 
-func (factory *filesystemDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
+func (factory *earthlyOutputDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
 	return FromParameters(parameters)
 }
 
 type driver struct {
-	rootDirectory string
+	mmp *MultiMultiProvider
 }
 
 type baseEmbed struct {
@@ -56,14 +56,13 @@ type baseEmbed struct {
 }
 
 // Driver is a storagedriver.StorageDriver implementation backed by a local
-// filesystem. All provided paths will be subpaths of the RootDirectory.
+// a multi-multi-provider.
 type Driver struct {
 	baseEmbed
 }
 
 // FromParameters constructs a new Driver with a given parameters map
 // Optional Parameters:
-// - rootdirectory
 // - maxthreads
 func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 	params, err := fromParametersImpl(parameters)
@@ -75,16 +74,11 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 
 func fromParametersImpl(parameters map[string]interface{}) (*DriverParameters, error) {
 	var (
-		err           error
-		maxThreads    = defaultMaxThreads
-		rootDirectory = defaultRootDirectory
+		err        error
+		maxThreads = defaultMaxThreads
 	)
 
 	if parameters != nil {
-		if rootDir, ok := parameters["rootdirectory"]; ok {
-			rootDirectory = fmt.Sprint(rootDir)
-		}
-
 		maxThreads, err = base.GetLimitFromParameter(parameters["maxthreads"], minThreads, defaultMaxThreads)
 		if err != nil {
 			return nil, fmt.Errorf("maxthreads config error: %s", err.Error())
@@ -92,15 +86,16 @@ func fromParametersImpl(parameters map[string]interface{}) (*DriverParameters, e
 	}
 
 	params := &DriverParameters{
-		RootDirectory: rootDirectory,
-		MaxThreads:    maxThreads,
+		MaxThreads: maxThreads,
 	}
 	return params, nil
 }
 
 // New constructs a new Driver with a given rootDirectory
 func New(params DriverParameters) *Driver {
-	fsDriver := &driver{rootDirectory: params.RootDirectory}
+	fsDriver := &driver{
+		mmp: MultiMultiProviderSingleton,
+	}
 
 	return &Driver{
 		baseEmbed: baseEmbed{
@@ -135,175 +130,142 @@ func (d *driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 
 // PutContent stores the []byte content at a location designated by "path".
 func (d *driver) PutContent(ctx context.Context, subPath string, contents []byte) error {
-	writer, err := d.Writer(ctx, subPath, false)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-	_, err = io.Copy(writer, bytes.NewReader(contents))
-	if err != nil {
-		writer.Cancel()
-		return err
-	}
-	return writer.Commit()
+	return storagedriver.ErrUnsupportedMethod{}
 }
 
 // Reader retrieves an io.ReadCloser for the content stored at "path" with a
 // given byte offset.
 func (d *driver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-	logrus.New().Info("@#@#@##@ reader ", path, " offset ", offset)
-	file, err := os.OpenFile(d.fullPath(path), os.O_RDONLY, 0644)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, storagedriver.PathNotFoundError{Path: path}
-		}
+	rc, _, err := d.get(ctx, path, offset)
+	return rc, err
+}
 
-		return nil, err
+func (d *driver) get(ctx context.Context, path string, offset int64) (io.ReadCloser, int64, error) {
+	logrus.New().Info("@# get ", path)
+	if !strings.HasPrefix(path, "/docker/registry/v2/") {
+		logrus.New().Error("@# bad 1 ", path)
+		return nil, 0, storagedriver.PathNotFoundError{}
 	}
-
-	seekPos, err := file.Seek(offset, io.SeekStart)
-	if err != nil {
-		file.Close()
-		return nil, err
-	} else if seekPos < offset {
-		file.Close()
-		return nil, storagedriver.InvalidOffsetError{Path: path, Offset: offset}
+	subPath := strings.TrimPrefix(path, "/docker/registry/v2/")
+	if strings.HasPrefix(subPath, "repositories/") {
+		subSubPath := strings.TrimPrefix(subPath, "repositories/")
+		subSubPathSplit := strings.Split(subSubPath, "/")
+		indexPostImgName := -1
+		for index, part := range subSubPathSplit {
+			if strings.HasPrefix(part, "_") {
+				indexPostImgName = index
+				break
+			}
+		}
+		if indexPostImgName == -1 {
+			logrus.New().Error("@# bad 2 ", path)
+			return nil, 0, storagedriver.PathNotFoundError{}
+		}
+		imgName := strings.Join(subSubPathSplit[0:indexPostImgName], "/")
+		logrus.New().Info("@# get ", path, " --imgname--> ", imgName)
+		switch subSubPathSplit[indexPostImgName] {
+		case "_manifests":
+			switch subSubPathSplit[indexPostImgName+1] {
+			case "tags":
+				postTagsPath := strings.Join(subSubPathSplit[indexPostImgName+2:], "/")
+				tag := strings.TrimSuffix(postTagsPath, "/current/link")
+				logrus.New().Info("@# get ", path, " --tag--> ", tag)
+				fullImgName := fmt.Sprintf("%s:%s", imgName, tag)
+				logrus.New().Info("@# get ", path, " --fullImgName--> ", fullImgName)
+				_, baseDigest, err := d.mmp.Get(ctx, fullImgName)
+				if err != nil {
+					logrus.New().Error("@# bad 3 ", path)
+					return nil, 0, errors.Wrapf(err, "get %s", path)
+				}
+				return stringReadCloserOffset(baseDigest.String(), offset)
+			case "revisions":
+				postRevisionsPath := strings.Join(subSubPathSplit[indexPostImgName+2:], "/")
+				if !strings.HasPrefix(postRevisionsPath, "sha256/") {
+					logrus.New().Error("@# bad 4 ", path)
+					return nil, 0, storagedriver.PathNotFoundError{}
+				}
+				sha := strings.TrimSuffix(strings.TrimPrefix(postRevisionsPath, "sha256/"), "/link")
+				return stringReadCloserOffset(fmt.Sprintf("sha256:%s", sha), offset)
+			default:
+				logrus.New().Error("@# bad 5 ", path)
+				return nil, 0, storagedriver.PathNotFoundError{}
+			}
+		case "_layers":
+			postLayersPath := strings.Join(subSubPathSplit[indexPostImgName+1:], "/")
+			if !strings.HasPrefix(postLayersPath, "sha256/") {
+				logrus.New().Error("@# bad 6 ", path)
+				return nil, 0, storagedriver.PathNotFoundError{}
+			}
+			sha := strings.TrimSuffix(strings.TrimPrefix(postLayersPath, "sha256/"), "/link")
+			return stringReadCloserOffset(fmt.Sprintf("sha256:%s", sha), offset)
+		default:
+			logrus.New().Error("@# bad 7 ", path)
+			return nil, 0, storagedriver.PathNotFoundError{}
+		}
+	} else if strings.HasPrefix(subPath, "blobs/sha256/") {
+		subSubPath := strings.TrimPrefix(subPath, "blobs/sha256/")
+		subSubPathSplit := strings.Split(subSubPath, "/")
+		if len(subSubPathSplit) != 3 {
+			logrus.New().Error("@# bad 8 ", path)
+			return nil, 0, storagedriver.PathNotFoundError{}
+		}
+		if subSubPathSplit[2] != "data" {
+			logrus.New().Error("@# bad 9 ", path)
+			return nil, 0, storagedriver.PathNotFoundError{}
+		}
+		sha := subSubPathSplit[1]
+		desc := ocispec.Descriptor{
+			Digest: digest.Digest(fmt.Sprintf("sha256:%s", sha)),
+		}
+		ra, err := d.mmp.ReaderAt(ctx, desc)
+		if err != nil {
+			logrus.New().Error("@# bad 10 ", path)
+			return nil, 0, errors.Wrapf(err, "blob %s", path)
+		}
+		return &readerAtReadCloser{
+			ra:     ra,
+			offset: offset,
+		}, ra.Size(), nil
+	} else {
+		logrus.New().Error("@# bad 11 ", path)
+		return nil, 0, storagedriver.PathNotFoundError{}
 	}
-
-	{ // @#
-		file, err := os.OpenFile(d.fullPath(path), os.O_RDONLY, 0644)
-		if err != nil {
-			panic(err)
-		}
-		_, err = file.Seek(offset, io.SeekStart)
-		if err != nil {
-			panic(err)
-		}
-		p, err := ioutil.ReadAll(file)
-		if err != nil {
-			panic(err)
-		}
-		if bytes.HasPrefix(p, []byte("{")) || bytes.HasPrefix(p, []byte("[")) || bytes.HasPrefix(p, []byte("sha256:")) || strings.HasSuffix(path, "/link") {
-			logrus.New().Info("@#@#@##@    -------> ", string(p))
-		} else {
-			logrus.New().Info("@#@#@##@    -------> <binary>")
-		}
-	}
-
-	return file, nil
 }
 
 func (d *driver) Writer(ctx context.Context, subPath string, append bool) (storagedriver.FileWriter, error) {
-	fullPath := d.fullPath(subPath)
-	parentDir := path.Dir(fullPath)
-	if err := os.MkdirAll(parentDir, 0777); err != nil {
-		return nil, err
-	}
-
-	fp, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	var offset int64
-
-	if !append {
-		err := fp.Truncate(0)
-		if err != nil {
-			fp.Close()
-			return nil, err
-		}
-	} else {
-		n, err := fp.Seek(0, io.SeekEnd)
-		if err != nil {
-			fp.Close()
-			return nil, err
-		}
-		offset = n
-	}
-
-	return newFileWriter(fp, offset), nil
+	return nil, storagedriver.ErrUnsupportedMethod{}
 }
 
 // Stat retrieves the FileInfo for the given path, including the current size
 // in bytes and the creation time.
 func (d *driver) Stat(ctx context.Context, subPath string) (storagedriver.FileInfo, error) {
-	fullPath := d.fullPath(subPath)
-
-	fi, err := os.Stat(fullPath)
+	_, size, err := d.get(ctx, subPath, 0)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, storagedriver.PathNotFoundError{Path: subPath}
-		}
-
 		return nil, err
 	}
 
 	return fileInfo{
-		path:     subPath,
-		FileInfo: fi,
+		path:   subPath,
+		size:   size,
+		crTime: time.Now(),
 	}, nil
 }
 
 // List returns a list of the objects that are direct descendants of the given
 // path.
 func (d *driver) List(ctx context.Context, subPath string) ([]string, error) {
-	fullPath := d.fullPath(subPath)
-
-	dir, err := os.Open(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, storagedriver.PathNotFoundError{Path: subPath}
-		}
-		return nil, err
-	}
-
-	defer dir.Close()
-
-	fileNames, err := dir.Readdirnames(0)
-	if err != nil {
-		return nil, err
-	}
-
-	keys := make([]string, 0, len(fileNames))
-	for _, fileName := range fileNames {
-		keys = append(keys, path.Join(subPath, fileName))
-	}
-
-	return keys, nil
+	return nil, storagedriver.ErrUnsupportedMethod{}
 }
 
 // Move moves an object stored at sourcePath to destPath, removing the original
 // object.
 func (d *driver) Move(ctx context.Context, sourcePath string, destPath string) error {
-	source := d.fullPath(sourcePath)
-	dest := d.fullPath(destPath)
-
-	if _, err := os.Stat(source); os.IsNotExist(err) {
-		return storagedriver.PathNotFoundError{Path: sourcePath}
-	}
-
-	if err := os.MkdirAll(path.Dir(dest), 0755); err != nil {
-		return err
-	}
-
-	err := os.Rename(source, dest)
-	return err
+	return storagedriver.ErrUnsupportedMethod{}
 }
 
 // Delete recursively deletes all objects stored at "path" and its subpaths.
 func (d *driver) Delete(ctx context.Context, subPath string) error {
-	fullPath := d.fullPath(subPath)
-
-	_, err := os.Stat(fullPath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	} else if err != nil {
-		return storagedriver.PathNotFoundError{Path: subPath}
-	}
-
-	err = os.RemoveAll(fullPath)
-	return err
+	return storagedriver.ErrUnsupportedMethod{}
 }
 
 // URLFor returns a URL which may be used to retrieve the content stored at the given path.
@@ -318,14 +280,10 @@ func (d *driver) Walk(ctx context.Context, path string, f storagedriver.WalkFn) 
 	return storagedriver.WalkFallback(ctx, d, path, f)
 }
 
-// fullPath returns the absolute path of a key within the Driver's storage.
-func (d *driver) fullPath(subPath string) string {
-	return path.Join(d.rootDirectory, subPath)
-}
-
 type fileInfo struct {
-	os.FileInfo
-	path string
+	size   int64
+	path   string
+	crTime time.Time
 }
 
 var _ storagedriver.FileInfo = fileInfo{}
@@ -339,105 +297,42 @@ func (fi fileInfo) Path() string {
 // be used to write to the end of the file at path. The value is
 // meaningless if IsDir returns true.
 func (fi fileInfo) Size() int64 {
-	if fi.IsDir() {
-		return 0
-	}
-
-	return fi.FileInfo.Size()
+	return fi.size
 }
 
 // ModTime returns the modification time for the file. For backends that
 // don't have a modification time, the creation time should be returned.
 func (fi fileInfo) ModTime() time.Time {
-	return fi.FileInfo.ModTime()
+	return fi.crTime
 }
 
 // IsDir returns true if the path is a directory.
 func (fi fileInfo) IsDir() bool {
-	return fi.FileInfo.IsDir()
+	return false
 }
 
-type fileWriter struct {
-	file      *os.File
-	size      int64
-	bw        *bufio.Writer
-	closed    bool
-	committed bool
-	cancelled bool
-}
-
-func newFileWriter(file *os.File, size int64) *fileWriter {
-	return &fileWriter{
-		file: file,
-		size: size,
-		bw:   bufio.NewWriter(file),
+func stringReadCloserOffset(str string, offset int64) (io.ReadCloser, int64, error) {
+	dt := []byte(str)
+	if offset > int64(len(dt)) {
+		return nil, 0, io.EOF
 	}
+	size := len(dt)
+	dt = dt[offset:]
+	reader := ioutil.NopCloser(bytes.NewReader(dt))
+	return reader, int64(size), nil
 }
 
-func (fw *fileWriter) Write(p []byte) (int, error) {
-	if fw.closed {
-		return 0, fmt.Errorf("already closed")
-	} else if fw.committed {
-		return 0, fmt.Errorf("already committed")
-	} else if fw.cancelled {
-		return 0, fmt.Errorf("already cancelled")
-	}
-	n, err := fw.bw.Write(p)
-	fw.size += int64(n)
+type readerAtReadCloser struct {
+	ra     content.ReaderAt
+	offset int64
+}
+
+func (rarc *readerAtReadCloser) Read(p []byte) (int, error) {
+	n, err := rarc.ra.ReadAt(p, rarc.offset)
+	rarc.offset += int64(n)
 	return n, err
 }
 
-func (fw *fileWriter) Size() int64 {
-	return fw.size
-}
-
-func (fw *fileWriter) Close() error {
-	if fw.closed {
-		return fmt.Errorf("already closed")
-	}
-
-	if err := fw.bw.Flush(); err != nil {
-		return err
-	}
-
-	if err := fw.file.Sync(); err != nil {
-		return err
-	}
-
-	if err := fw.file.Close(); err != nil {
-		return err
-	}
-	fw.closed = true
-	return nil
-}
-
-func (fw *fileWriter) Cancel() error {
-	if fw.closed {
-		return fmt.Errorf("already closed")
-	}
-
-	fw.cancelled = true
-	fw.file.Close()
-	return os.Remove(fw.file.Name())
-}
-
-func (fw *fileWriter) Commit() error {
-	if fw.closed {
-		return fmt.Errorf("already closed")
-	} else if fw.committed {
-		return fmt.Errorf("already committed")
-	} else if fw.cancelled {
-		return fmt.Errorf("already cancelled")
-	}
-
-	if err := fw.bw.Flush(); err != nil {
-		return err
-	}
-
-	if err := fw.file.Sync(); err != nil {
-		return err
-	}
-
-	fw.committed = true
-	return nil
+func (rarc *readerAtReadCloser) Close() error {
+	return rarc.ra.Close()
 }

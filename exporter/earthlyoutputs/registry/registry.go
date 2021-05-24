@@ -19,7 +19,7 @@ func Serve(ctx context.Context, listenAddr string) chan error {
 version: 0.1
 storage:
   eodriver:
-    rootdirectory: /var/lib/earthly-registry`))
+    maxthreads: 100`))
 	if err != nil {
 		serveErr <- err
 		return serveErr

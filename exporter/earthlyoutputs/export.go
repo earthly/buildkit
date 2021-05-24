@@ -21,11 +21,11 @@ import (
 	"github.com/moby/buildkit/exporter"
 	"github.com/moby/buildkit/exporter/containerimage"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
+	"github.com/moby/buildkit/exporter/earthlyoutputs/registry/eodriver"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/filesync"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/util/compression"
-	"github.com/moby/buildkit/util/contentutil"
 	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/moby/buildkit/util/leaseutil"
 	"github.com/moby/buildkit/util/progress"
@@ -336,12 +336,18 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		eg.Go(exportDirFunc(egCtx, md, caller, expSrc.Ref, sessionID))
 	}
 
-	mproviders := make(map[string]*contentutil.MultiProvider) // imgName -> mprovider
+	mmp := eodriver.MultiMultiProviderSingleton
 	annotations := map[digest.Digest]map[string]string{}
 	for imgName, expSrc := range imageExpSrcs {
-		mprovider := contentutil.NewMultiProvider(e.opt.ImageWriter.ContentStore())
-		mprovider.DebugOutput = true // @#
-		mproviders[imgName] = mprovider
+		// TODO: This context is hacky - need a better way to clean up img after export.
+		//       How to tell if client is done with pulling?
+		mmpImgCtx, _ := context.WithTimeout(context.Background(), 15*time.Minute)
+		// TODO @# Don't use imgName here - use some ID of some sort (an ID passed by the client?).
+		//      Should not reuse image names due to possible collisions.
+		err := mmp.AddImg(mmpImgCtx, imgName, e.opt.ImageWriter.ContentStore(), descs[imgName].Digest)
+		if err != nil {
+			return nil, err
+		}
 		for _, r := range expSrc.Refs {
 			remote, err := r.GetRemote(ctx, false, e.layerCompression, session.NewGroup(sessionID))
 			if err != nil {
@@ -349,13 +355,17 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			}
 			// unlazy before tar export as the tar writer does not handle
 			// layer blobs in parallel (whereas unlazy does)
+			// TODO @# is unlazying still necessary?
 			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
 				if err := unlazier.Unlazy(ctx); err != nil {
 					return nil, err
 				}
 			}
 			for _, desc := range remote.Descriptors {
-				mprovider.Add(desc.Digest, remote.Provider)
+				err := mmp.AddImgSub(imgName, desc.Digest, remote.Provider)
+				if err != nil {
+					return nil, err
+				}
 				addAnnotations(annotations, desc)
 			}
 		}
@@ -366,13 +376,17 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			}
 			// unlazy before tar export as the tar writer does not handle
 			// layer blobs in parallel (whereas unlazy does)
+			// TODO @# is unlazying still necessary?
 			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
 				if err := unlazier.Unlazy(ctx); err != nil {
 					return nil, err
 				}
 			}
 			for _, desc := range remote.Descriptors {
-				mprovider.Add(desc.Digest, remote.Provider)
+				err := mmp.AddImgSub(imgName, desc.Digest, remote.Provider)
+				if err != nil {
+					return nil, err
+				}
 				addAnnotations(annotations, desc)
 			}
 
@@ -380,7 +394,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 
 		if shouldPush[imgName] {
 			err := push.Push(
-				ctx, e.opt.SessionManager, sessionID, mprovider,
+				ctx, e.opt.SessionManager, sessionID, mmp,
 				e.opt.ImageWriter.ContentStore(), descs[imgName].Digest,
 				imgName, insecurePush[imgName], e.opt.RegistryHosts, false, annotations)
 			if err != nil {
@@ -404,7 +418,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		default:
 			return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
 		}
-		if err := archiveexporter.Export(ctx, mproviders[imgName], w, expOpts...); err != nil {
+		mp, _, err := mmp.Get(ctx, imgName)
+		if err != nil {
+			return nil, err
+		}
+		if err := archiveexporter.Export(ctx, mp, w, expOpts...); err != nil {
 			w.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
 				continue
@@ -434,6 +452,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	if err := eg.Wait(); err != nil {
 		return nil, report(err)
 	}
+	time.Sleep(2 * time.Minute) // @#
 	return resp, report(nil)
 }
 
