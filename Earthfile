@@ -24,5 +24,5 @@ multi:
 
 test-image2:
     FROM alpine:3.13
-    RUN echo "hello world 10" >/content
-    SAVE IMAGE test/test2:latest
+    RUN echo "hello world 12" >/content
+    SAVE IMAGE test/test3:latest

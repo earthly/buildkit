@@ -24,6 +24,7 @@ import (
 	"github.com/moby/buildkit/exporter/earthlyoutputs/registry/eodriver"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/filesync"
+	"github.com/moby/buildkit/session/pullping"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/util/compression"
 	"github.com/moby/buildkit/util/grpcerrors"
@@ -135,6 +136,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		src.Metadata[k] = v
 	}
 	localExport := make(map[string]bool)              // imgName -> true/false
+	localRegExport := make(map[string]string)         // imgName -> regImgName
 	shouldPush := make(map[string]bool)               // imgName -> true/false
 	insecurePush := make(map[string]bool)             // imgName -> true/false
 	plats := make(map[string][]exptypes.Platform)     // imgName -> []platform
@@ -159,6 +161,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		if string(simpleMd["export-image"]) == "true" {
 			isImage = true
 			le = true
+		}
+		eilr := ""
+		if string(simpleMd["export-image-local-registry"]) != "" {
+			isImage = true
+			eilr = string(simpleMd["export-image-local-registry"])
 		}
 		sp := false
 		if string(simpleMd["export-image-push"]) == "true" {
@@ -211,7 +218,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 
 			for _, imgName := range imgNames {
 				le2, ok := localExport[imgName]
-				if !ok {
+				if !ok && le {
 					localExport[imgName] = le
 					le2 = le
 				}
@@ -219,8 +226,17 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 					return nil, errors.Errorf("inconsistent local-export/no-local-export setting for image %s", imgName)
 				}
 
+				eilr2, ok := localRegExport[imgName]
+				if !ok && eilr != "" {
+					localRegExport[imgName] = eilr
+					eilr2 = eilr
+				}
+				if eilr != eilr2 {
+					return nil, errors.Errorf("inconsistent local registry export setting for image %s. \"%s\" vs \"%s\"", imgName, eilr, eilr2)
+				}
+
 				sp2, ok := shouldPush[imgName]
-				if !ok {
+				if !ok && sp {
 					shouldPush[imgName] = sp
 					sp2 = sp
 				}
@@ -229,7 +245,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 				}
 
 				ip2, ok := insecurePush[imgName]
-				if !ok {
+				if !ok && ip {
 					insecurePush[imgName] = ip
 					ip2 = ip
 				}
@@ -244,6 +260,9 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 						Metadata: make(map[string][]byte),
 					}
 					expSrc.Metadata["image.name"] = []byte(imgName)
+					if eilr != "" {
+						expSrc.Metadata["export-image-local-registry"] = []byte(eilr)
+					}
 					if le {
 						expSrc.Metadata["export-image"] = []byte("true")
 					}
@@ -339,12 +358,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 	mmp := eodriver.MultiMultiProviderSingleton
 	annotations := map[digest.Digest]map[string]string{}
 	for imgName, expSrc := range imageExpSrcs {
-		// TODO: This context is hacky - need a better way to clean up img after export.
-		//       How to tell if client is done with pulling?
-		mmpImgCtx, _ := context.WithTimeout(context.Background(), 15*time.Minute)
-		// TODO @# Don't use imgName here - use some ID of some sort (an ID passed by the client?).
-		//      Should not reuse image names due to possible collisions.
-		err := mmp.AddImg(mmpImgCtx, imgName, e.opt.ImageWriter.ContentStore(), descs[imgName].Digest)
+		mmpID := localRegExport[imgName]
+		if mmpID == "" {
+			mmpID = imgName
+		}
+		err := mmp.AddImg(ctx, mmpID, e.opt.ImageWriter.ContentStore(), descs[imgName].Digest)
 		if err != nil {
 			return nil, err
 		}
@@ -353,16 +371,17 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			if err != nil {
 				return nil, err
 			}
-			// unlazy before tar export as the tar writer does not handle
-			// layer blobs in parallel (whereas unlazy does)
-			// TODO @# is unlazying still necessary?
-			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
-				if err := unlazier.Unlazy(ctx); err != nil {
-					return nil, err
+			if localExport[imgName] {
+				// unlazy before tar export as the tar writer does not handle
+				// layer blobs in parallel (whereas unlazy does)
+				if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+					if err := unlazier.Unlazy(ctx); err != nil {
+						return nil, err
+					}
 				}
 			}
 			for _, desc := range remote.Descriptors {
-				err := mmp.AddImgSub(imgName, desc.Digest, remote.Provider)
+				err := mmp.AddImgSub(mmpID, desc.Digest, remote.Provider)
 				if err != nil {
 					return nil, err
 				}
@@ -374,16 +393,17 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			if err != nil {
 				return nil, err
 			}
-			// unlazy before tar export as the tar writer does not handle
-			// layer blobs in parallel (whereas unlazy does)
-			// TODO @# is unlazying still necessary?
-			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
-				if err := unlazier.Unlazy(ctx); err != nil {
-					return nil, err
+			if localExport[imgName] {
+				// unlazy before tar export as the tar writer does not handle
+				// layer blobs in parallel (whereas unlazy does)
+				if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+					if err := unlazier.Unlazy(ctx); err != nil {
+						return nil, err
+					}
 				}
 			}
 			for _, desc := range remote.Descriptors {
-				err := mmp.AddImgSub(imgName, desc.Digest, remote.Provider)
+				err := mmp.AddImgSub(mmpID, desc.Digest, remote.Provider)
 				if err != nil {
 					return nil, err
 				}
@@ -403,27 +423,70 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		}
 	}
 
-	report := oneOffProgress(ctx, "sending tarballs")
-	for imgName, le := range localExport {
-		if !le {
-			continue
+	var pullPingChan chan error
+	if len(localRegExport) != 0 {
+		report := oneOffProgress(ctx, "local-registry-based export")
+		// inform the client that it's safe to perform pulls now
+		images := make([]string, 0, len(localRegExport))
+		for _, pullName := range localRegExport {
+			images = append(images, pullName)
 		}
-		w := writers[imgName]
-		desc := descs[imgName]
-		expOpts := []archiveexporter.ExportOpt{archiveexporter.WithManifest(*desc, imgName)}
-		switch e.opt.Variant {
-		case VariantOCI:
-			expOpts = append(expOpts, archiveexporter.WithAllPlatforms(), archiveexporter.WithSkipDockerManifest())
-		case VariantDocker:
-		default:
-			return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
+		pullPingChan = pullping.PullPingChannel(ctx, images, caller)
+		ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Hour)
+		defer cancel()
+		// wait for the client to finish pulling
+		select {
+		case err := <-pullPingChan:
+			if err != nil {
+				return nil, report(errors.Wrap(err, "pull ping error"))
+			}
+		case <-ctxTimeout.Done():
+			return nil, report(errors.Wrap(ctx.Err(), "pull ping timeout"))
 		}
-		mp, _, err := mmp.Get(ctx, imgName)
+		err = report(nil)
 		if err != nil {
 			return nil, err
 		}
-		if err := archiveexporter.Export(ctx, mp, w, expOpts...); err != nil {
-			w.Close()
+	}
+
+	if len(localExport) != 0 {
+		report := oneOffProgress(ctx, "sending tarballs")
+		for imgName, le := range localExport {
+			if !le {
+				continue
+			}
+			w := writers[imgName]
+			desc := descs[imgName]
+			expOpts := []archiveexporter.ExportOpt{archiveexporter.WithManifest(*desc, imgName)}
+			switch e.opt.Variant {
+			case VariantOCI:
+				expOpts = append(expOpts, archiveexporter.WithAllPlatforms(), archiveexporter.WithSkipDockerManifest())
+			case VariantDocker:
+			default:
+				return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
+			}
+			mmpID := localRegExport[imgName]
+			if mmpID == "" {
+				mmpID = imgName
+			}
+			mp, _, err := mmp.Get(ctx, mmpID)
+			if err != nil {
+				return nil, err
+			}
+			if err := archiveexporter.Export(ctx, mp, w, expOpts...); err != nil {
+				w.Close()
+				if grpcerrors.Code(err) == codes.AlreadyExists {
+					continue
+				}
+				if errors.Is(err, io.EOF) {
+					// TODO(vladaionescu): This sometimes happens when server responds with
+					//                     GRPC code codes.AlreadyExists and
+					//                     we continue to try to send data.
+					continue
+				}
+				return nil, report(err)
+			}
+			err = w.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
 				continue
 			}
@@ -433,27 +496,19 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 				//                     we continue to try to send data.
 				continue
 			}
+			if err != nil {
+				return nil, report(err)
+			}
+		}
+		if err := eg.Wait(); err != nil {
 			return nil, report(err)
 		}
-		err = w.Close()
-		if grpcerrors.Code(err) == codes.AlreadyExists {
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			// TODO(vladaionescu): This sometimes happens when server responds with
-			//                     GRPC code codes.AlreadyExists and
-			//                     we continue to try to send data.
-			continue
-		}
+		err := report(nil)
 		if err != nil {
-			return nil, report(err)
+			return nil, err
 		}
 	}
-	if err := eg.Wait(); err != nil {
-		return nil, report(err)
-	}
-	time.Sleep(2 * time.Minute) // @#
-	return resp, report(nil)
+	return resp, nil
 }
 
 func oneOffProgress(ctx context.Context, id string) func(err error) error {

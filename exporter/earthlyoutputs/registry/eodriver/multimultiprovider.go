@@ -3,7 +3,6 @@ package eodriver
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 
 	"github.com/containerd/containerd/content"
@@ -12,7 +11,6 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 // MultiMultiProviderSingleton is a multi-multi-provider that can be shared across runs.
@@ -47,23 +45,19 @@ func (mmp *MultiMultiProvider) ReaderAt(ctx context.Context, desc ocispec.Descri
 	imgs := mmp.digests[desc.Digest]
 	// take the first one if multiple are found.
 	for imgName := range imgs {
-		logrus.New().Info("@# mmp ReaderAt ", desc.Digest.String(), " -----> ", imgName)
 		mp, _, err := mmp.getNoLock(ctx, imgName)
 		if err != nil {
 			continue
 		}
 		return mp.ReaderAt(ctx, desc)
 	}
-	logrus.New().Info("@# mmp ReaderAt ", desc.Digest.String(), " -----> not found!!")
 	return nil, errors.Wrapf(errdefs.ErrNotFound, "content %v", desc.Digest)
 }
 
 // Get returns a read-only MultiProvider and the base digest for a given imgName.
 func (mmp *MultiMultiProvider) Get(ctx context.Context, imgName string) (*contentutil.MultiProvider, digest.Digest, error) {
-	logrus.New().Info("@# mmp Get ", imgName)
 	mmp.mu.RLock()
 	defer mmp.mu.RUnlock()
-	logrus.New().Info("@# mmp contents: ", fmt.Sprintf("imgs: %+v\ndigests: %+v", mmp.imgs, mmp.digests))
 	return mmp.getNoLock(ctx, imgName)
 }
 
@@ -81,10 +75,8 @@ func (mmp *MultiMultiProvider) getNoLock(ctx context.Context, imgName string) (*
 
 // AddImgSub adds a new child content provider for an image.
 func (mmp *MultiMultiProvider) AddImgSub(imgName string, dgst digest.Digest, p content.Provider) error {
-	logrus.New().Info("@# mmp AddImgSub ", imgName, " digest ", dgst.String())
 	mmp.mu.Lock()
 	defer mmp.mu.Unlock()
-	logrus.New().Info("@# mmp contents: ", fmt.Sprintf("imgs: %+v\ndigests: %+v", mmp.imgs, mmp.digests))
 	imgData, ok := mmp.imgs[imgName]
 	if !ok {
 		return errors.Wrapf(errdefs.ErrNotFound, "img name %v", imgName)
@@ -107,7 +99,6 @@ func (mmp *MultiMultiProvider) AddImg(ctx context.Context, imgName string, base 
 	if err != nil {
 		return err
 	}
-	logrus.New().Info("@# mmp manifest detected: ", string(mfstDt))
 	var manifest struct {
 		Config struct {
 			Digest string `json:"digest"`
@@ -119,11 +110,9 @@ func (mmp *MultiMultiProvider) AddImg(ctx context.Context, imgName string, base 
 	}
 	configDgst := digest.Digest(manifest.Config.Digest)
 
-	logrus.New().Info("@# mmp AddImg ", imgName, " base digest=", baseDigest.String(), " config digest=", configDgst.String())
 	mmp.mu.Lock()
 	defer mmp.mu.Unlock()
 	mmp.maybeDelete(imgName)
-	logrus.New().Info("@# mmp contents: ", fmt.Sprintf("imgs: %+v\ndigests: %+v", mmp.imgs, mmp.digests))
 	imgData := &imgData{
 		base:     base,
 		baseDgst: baseDigest,

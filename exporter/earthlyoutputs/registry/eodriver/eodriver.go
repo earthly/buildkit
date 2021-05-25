@@ -16,7 +16,6 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -141,9 +140,7 @@ func (d *driver) Reader(ctx context.Context, path string, offset int64) (io.Read
 }
 
 func (d *driver) get(ctx context.Context, path string, offset int64) (io.ReadCloser, int64, error) {
-	logrus.New().Info("@# get ", path)
 	if !strings.HasPrefix(path, "/docker/registry/v2/") {
-		logrus.New().Error("@# bad 1 ", path)
 		return nil, 0, storagedriver.PathNotFoundError{}
 	}
 	subPath := strings.TrimPrefix(path, "/docker/registry/v2/")
@@ -158,59 +155,48 @@ func (d *driver) get(ctx context.Context, path string, offset int64) (io.ReadClo
 			}
 		}
 		if indexPostImgName == -1 {
-			logrus.New().Error("@# bad 2 ", path)
 			return nil, 0, storagedriver.PathNotFoundError{}
 		}
 		imgName := strings.Join(subSubPathSplit[0:indexPostImgName], "/")
-		logrus.New().Info("@# get ", path, " --imgname--> ", imgName)
 		switch subSubPathSplit[indexPostImgName] {
 		case "_manifests":
 			switch subSubPathSplit[indexPostImgName+1] {
 			case "tags":
 				postTagsPath := strings.Join(subSubPathSplit[indexPostImgName+2:], "/")
 				tag := strings.TrimSuffix(postTagsPath, "/current/link")
-				logrus.New().Info("@# get ", path, " --tag--> ", tag)
 				fullImgName := fmt.Sprintf("%s:%s", imgName, tag)
-				logrus.New().Info("@# get ", path, " --fullImgName--> ", fullImgName)
 				_, baseDigest, err := d.mmp.Get(ctx, fullImgName)
 				if err != nil {
-					logrus.New().Error("@# bad 3 ", path)
 					return nil, 0, errors.Wrapf(err, "get %s", path)
 				}
 				return stringReadCloserOffset(baseDigest.String(), offset)
 			case "revisions":
 				postRevisionsPath := strings.Join(subSubPathSplit[indexPostImgName+2:], "/")
 				if !strings.HasPrefix(postRevisionsPath, "sha256/") {
-					logrus.New().Error("@# bad 4 ", path)
 					return nil, 0, storagedriver.PathNotFoundError{}
 				}
 				sha := strings.TrimSuffix(strings.TrimPrefix(postRevisionsPath, "sha256/"), "/link")
 				return stringReadCloserOffset(fmt.Sprintf("sha256:%s", sha), offset)
 			default:
-				logrus.New().Error("@# bad 5 ", path)
 				return nil, 0, storagedriver.PathNotFoundError{}
 			}
 		case "_layers":
 			postLayersPath := strings.Join(subSubPathSplit[indexPostImgName+1:], "/")
 			if !strings.HasPrefix(postLayersPath, "sha256/") {
-				logrus.New().Error("@# bad 6 ", path)
 				return nil, 0, storagedriver.PathNotFoundError{}
 			}
 			sha := strings.TrimSuffix(strings.TrimPrefix(postLayersPath, "sha256/"), "/link")
 			return stringReadCloserOffset(fmt.Sprintf("sha256:%s", sha), offset)
 		default:
-			logrus.New().Error("@# bad 7 ", path)
 			return nil, 0, storagedriver.PathNotFoundError{}
 		}
 	} else if strings.HasPrefix(subPath, "blobs/sha256/") {
 		subSubPath := strings.TrimPrefix(subPath, "blobs/sha256/")
 		subSubPathSplit := strings.Split(subSubPath, "/")
 		if len(subSubPathSplit) != 3 {
-			logrus.New().Error("@# bad 8 ", path)
 			return nil, 0, storagedriver.PathNotFoundError{}
 		}
 		if subSubPathSplit[2] != "data" {
-			logrus.New().Error("@# bad 9 ", path)
 			return nil, 0, storagedriver.PathNotFoundError{}
 		}
 		sha := subSubPathSplit[1]
@@ -219,7 +205,6 @@ func (d *driver) get(ctx context.Context, path string, offset int64) (io.ReadClo
 		}
 		ra, err := d.mmp.ReaderAt(ctx, desc)
 		if err != nil {
-			logrus.New().Error("@# bad 10 ", path)
 			return nil, 0, errors.Wrapf(err, "blob %s", path)
 		}
 		return &readerAtReadCloser{
@@ -227,7 +212,6 @@ func (d *driver) get(ctx context.Context, path string, offset int64) (io.ReadClo
 			offset: offset,
 		}, ra.Size(), nil
 	} else {
-		logrus.New().Error("@# bad 11 ", path)
 		return nil, 0, storagedriver.PathNotFoundError{}
 	}
 }
