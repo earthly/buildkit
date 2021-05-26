@@ -149,6 +149,11 @@ type imgData struct {
 
 	// tarWriter is the image tar writer (set only if localExport is true).
 	tarWriter io.WriteCloser
+
+	// localRegExportReport is the one-off progress reporter for the local reg export.
+	localRegExportReport func()
+	// localExportReport is the one-off progress reporter for the tar export.
+	localExportReport func()
 }
 
 func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source, sessionID string) (map[string]string, error) {
@@ -336,18 +341,24 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 			return nil, err
 		}
 	}
-	eg, egCtx := errgroup.WithContext(ctx)
+	dirEG, egCtx := errgroup.WithContext(ctx)
 	for _, expSrc := range dirExpSrcs {
 		md := make(map[string]string)
 		for mdK, mdV := range expSrc.Metadata {
 			md[safeGrpcMetaKey(mdK)] = string(mdV)
 		}
-		eg.Go(exportDirFunc(egCtx, md, caller, expSrc.Ref, sessionID))
+		dirEG.Go(exportDirFunc(egCtx, md, caller, expSrc.Ref, sessionID))
 	}
 
 	mmp := eodriver.MultiMultiProviderSingleton
 	annotations := map[digest.Digest]map[string]string{}
 	for imgName, img := range images {
+		if img.localExport {
+			img.localExportReport = oneOffProgress(ctx, fmt.Sprintf("transferring (via tar) %s", imgName))
+		}
+		if img.localRegExport != "" {
+			img.localRegExportReport = oneOffProgress(ctx, fmt.Sprintf("transferring %s", imgName))
+		}
 		mmpID := img.localRegExport
 		if mmpID == "" {
 			mmpID = imgName
@@ -414,7 +425,6 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 
 	var pullPingChan chan error
 	if hasAnyLocalRegExport {
-		report := oneOffProgress(ctx, "local-registry-based export")
 		// inform the client that it's safe to perform pulls now
 		pullImgs := make([]string, 0, len(images))
 		for _, img := range images {
@@ -429,21 +439,21 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		select {
 		case err := <-pullPingChan:
 			if err != nil {
-				return nil, report(errors.Wrap(err, "pull ping error"))
+				return nil, errors.Wrap(err, "pull ping error")
 			}
 		case <-ctxTimeout.Done():
-			return nil, report(errors.Wrap(ctxTimeout.Err(), "pull ping ctx done"))
+			return nil, errors.Wrap(ctxTimeout.Err(), "pull ping ctx done")
 		case <-caller.Context().Done():
-			return nil, report(errors.Wrap(caller.Context().Err(), "caller context done"))
+			return nil, errors.Wrap(caller.Context().Err(), "caller context done")
 		}
-		err = report(nil)
-		if err != nil {
-			return nil, err
+		for _, img := range images {
+			if img.localRegExport != "" {
+				img.localRegExportReport()
+			}
 		}
 	}
 
 	if hasAnyTarExport {
-		report := oneOffProgress(ctx, "sending tarballs")
 		for imgName, img := range images {
 			if !img.localExport {
 				continue
@@ -454,7 +464,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 				expOpts = append(expOpts, archiveexporter.WithAllPlatforms(), archiveexporter.WithSkipDockerManifest())
 			case VariantDocker:
 			default:
-				return nil, report(errors.Errorf("invalid variant %q", e.opt.Variant))
+				return nil, errors.Errorf("invalid variant %q", e.opt.Variant)
 			}
 			mmpID := img.localRegExport
 			if mmpID == "" {
@@ -475,7 +485,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 					//                     we continue to try to send data.
 					continue
 				}
-				return nil, report(err)
+				return nil, err
 			}
 			err = img.tarWriter.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
@@ -488,34 +498,41 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 				continue
 			}
 			if err != nil {
-				return nil, report(err)
+				return nil, err
+			}
+			img.localExportReport()
+		}
+		// just in case any report was skipped due to a continue
+		for _, img := range images {
+			if img.localExportReport != nil {
+				img.localExportReport()
 			}
 		}
-		if err := eg.Wait(); err != nil {
-			return nil, report(err)
-		}
-		err := report(nil)
-		if err != nil {
-			return nil, err
-		}
 	}
+
+	if err := dirEG.Wait(); err != nil {
+		return nil, err
+	}
+
 	return resp, nil
 }
 
-func oneOffProgress(ctx context.Context, id string) func(err error) error {
+func oneOffProgress(ctx context.Context, id string) func() {
 	pw, _, _ := progress.FromContext(ctx)
 	now := time.Now()
 	st := progress.Status{
 		Started: &now,
 	}
 	pw.Write(id, st)
-	return func(err error) error {
-		// TODO: set error on status
+	return func() {
+		if st.Completed != nil {
+			// Don't close twice.
+			return
+		}
 		now := time.Now()
 		st.Completed = &now
 		pw.Write(id, st)
 		pw.Close()
-		return err
 	}
 }
 
