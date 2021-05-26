@@ -249,13 +249,17 @@ func main() {
 
 		controller.Register(server)
 
-		serveErr := registry.Serve(ctx, "0.0.0.0:1234") // TODO: configurable
-		go func() {
-			err := <-serveErr
-			if err != nil {
-				logrus.Errorf("Registry serve error: %s\n", err.Error())
-			}
-		}()
+		lrPort, ok := os.LookupEnv("BUILDKIT_LOCAL_REGISTRY_LISTEN_PORT")
+		if ok {
+			logrus.Infof("Starting local registry for outputs on port %s", lrPort)
+			serveErr := registry.Serve(ctx, fmt.Sprintf("0.0.0.0:%s", lrPort))
+			go func() {
+				err := <-serveErr
+				if err != nil {
+					logrus.Errorf("Registry serve error: %s\n", err.Error())
+				}
+			}()
+		}
 
 		ents := c.GlobalStringSlice("allow-insecure-entitlement")
 		if len(ents) > 0 {
