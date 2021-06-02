@@ -23,7 +23,12 @@ func Dialer(api controlapi.ControlClient) session.Dialer {
 
 		ctx = metadata.NewOutgoingContext(ctx, md)
 
-		stream, err := api.Session(ctx)
+		maxMsgSize := 67108864 // 64MB
+		opts := []grpc.CallOption{
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		}
+		stream, err := api.Session(ctx, opts...)
 		if err != nil {
 			return nil, err
 		}

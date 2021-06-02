@@ -13,6 +13,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+const maxMsgSize = 67108864 // 64MB
+var extraOpts = []grpc.CallOption{
+	grpc.MaxCallRecvMsgSize(maxMsgSize),
+	grpc.MaxCallSendMsgSize(maxMsgSize),
+}
+
 func (c *Client) Build(ctx context.Context, opt SolveOpt, product string, buildFunc gateway.BuildFunc, statusChan chan *SolveStatus) (*SolveResponse, error) {
 	defer func() {
 		if statusChan != nil {
@@ -83,12 +89,16 @@ func (g *gatewayClientForBuild) ResolveImageConfig(ctx context.Context, in *gate
 
 func (g *gatewayClientForBuild) Solve(ctx context.Context, in *gatewayapi.SolveRequest, opts ...grpc.CallOption) (*gatewayapi.SolveResponse, error) {
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.Solve(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.Solve(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) ReadFile(ctx context.Context, in *gatewayapi.ReadFileRequest, opts ...grpc.CallOption) (*gatewayapi.ReadFileResponse, error) {
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.ReadFile(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.ReadFile(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) ReadDir(ctx context.Context, in *gatewayapi.ReadDirRequest, opts ...grpc.CallOption) (*gatewayapi.ReadDirResponse, error) {
@@ -96,7 +106,9 @@ func (g *gatewayClientForBuild) ReadDir(ctx context.Context, in *gatewayapi.Read
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.ReadDir(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.ReadDir(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) StatFile(ctx context.Context, in *gatewayapi.StatFileRequest, opts ...grpc.CallOption) (*gatewayapi.StatFileResponse, error) {
@@ -104,17 +116,23 @@ func (g *gatewayClientForBuild) StatFile(ctx context.Context, in *gatewayapi.Sta
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.StatFile(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.StatFile(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) Ping(ctx context.Context, in *gatewayapi.PingRequest, opts ...grpc.CallOption) (*gatewayapi.PongResponse, error) {
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.Ping(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.Ping(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) Return(ctx context.Context, in *gatewayapi.ReturnRequest, opts ...grpc.CallOption) (*gatewayapi.ReturnResponse, error) {
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.Return(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.Return(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) Inputs(ctx context.Context, in *gatewayapi.InputsRequest, opts ...grpc.CallOption) (*gatewayapi.InputsResponse, error) {
@@ -122,7 +140,9 @@ func (g *gatewayClientForBuild) Inputs(ctx context.Context, in *gatewayapi.Input
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.Inputs(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.Inputs(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) NewContainer(ctx context.Context, in *gatewayapi.NewContainerRequest, opts ...grpc.CallOption) (*gatewayapi.NewContainerResponse, error) {
@@ -130,7 +150,9 @@ func (g *gatewayClientForBuild) NewContainer(ctx context.Context, in *gatewayapi
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.NewContainer(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.NewContainer(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) ReleaseContainer(ctx context.Context, in *gatewayapi.ReleaseContainerRequest, opts ...grpc.CallOption) (*gatewayapi.ReleaseContainerResponse, error) {
@@ -138,7 +160,9 @@ func (g *gatewayClientForBuild) ReleaseContainer(ctx context.Context, in *gatewa
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.ReleaseContainer(ctx, in, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.ReleaseContainer(ctx, in, opts2...)
 }
 
 func (g *gatewayClientForBuild) ExecProcess(ctx context.Context, opts ...grpc.CallOption) (gatewayapi.LLBBridge_ExecProcessClient, error) {
@@ -146,5 +170,7 @@ func (g *gatewayClientForBuild) ExecProcess(ctx context.Context, opts ...grpc.Ca
 		return nil, err
 	}
 	ctx = buildid.AppendToOutgoingContext(ctx, g.buildID)
-	return g.gateway.ExecProcess(ctx, opts...)
+	opts2 := append([]grpc.CallOption{}, extraOpts...)
+	opts2 = append(opts2, opts...)
+	return g.gateway.ExecProcess(ctx, opts2...)
 }
