@@ -41,7 +41,7 @@ type stream interface {
 
 func streamToConn(stream stream) (net.Conn, <-chan struct{}) {
 	closeCh := make(chan struct{})
-	c := &conn{stream: stream, buf: make([]byte, 32*1<<10), closeCh: closeCh}
+	c := &conn{stream: stream, buf: make([]byte, 32*1<<6), closeCh: closeCh}
 	return c, closeCh
 }
 
