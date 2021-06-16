@@ -26,6 +26,13 @@ const CopyFileMagicStr = "39a51ba7-d8c6-43ac-b3aa-f987b2db1ced"
 // it's used as "SendFileMagicStr src dest"
 const SendFileMagicStr = "98325231-d2e6-931c-b12a-84273bca21db"
 
+// RunOnLocalHostLockMagicStr is a magic argument that indicates the next argument should be used as a lock name to require
+// if it is aleady locked, it will continue
+const RunOnLocalHostLockMagicStr = "51e6f7d5-b1f9-40c6-aa8a-dac4eb1d8cbd"
+
+// RunOnLocalHostUnlockMagicStr is a magic argument that indicates the next argument should be used as a lock name to unlock
+const RunOnLocalHostUnlockMagicStr = "3e9851fe-d820-453b-a05e-187af9ab085c"
+
 // Mountable is from buildkit/snapshot; however the snapshot package wont build on darwin
 // so we must pull this in here to avoid pulling in linux-specific packages.
 type Mountable interface {
