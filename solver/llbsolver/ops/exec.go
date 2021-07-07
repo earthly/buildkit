@@ -26,6 +26,7 @@ import (
 	"github.com/moby/buildkit/solver/llbsolver/errdefs"
 	"github.com/moby/buildkit/solver/llbsolver/mounts"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/locallylock"
 	"github.com/moby/buildkit/util/progress/logs"
 	utilsystem "github.com/moby/buildkit/util/system"
 	"github.com/moby/buildkit/worker"
@@ -35,6 +36,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 )
+
+var localLock *locallylock.Lock
+
+func init() {
+	localLock = locallylock.New()
+}
 
 const execCacheType = "buildkit.exec.v0"
 
@@ -519,6 +526,9 @@ func (e *execOp) sendLocally(ctx context.Context, root executor.Mount, mounts []
 	})
 }
 
+var errMagicArgUnderflow = fmt.Errorf("magic arg underflow")
+var errUnexpectedArgs = fmt.Errorf("unexpected args")
+
 func (e *execOp) execLocally(ctx context.Context, root executor.Mount, g session.Group, meta executor.Meta, stdout, stderr io.WriteCloser) error {
 	if len(meta.Args) == 0 || meta.Args[0] != localhost.RunOnLocalHostMagicStr {
 		panic("first arg should be RunOnLocalHostMagicStr; this should not happen")
@@ -526,7 +536,46 @@ func (e *execOp) execLocally(ctx context.Context, root executor.Mount, g session
 	args := meta.Args[1:] // remove magic uuid from command prefix; the rest that follows is the actual command to run
 	cwd := meta.Cwd
 
+	var lockName string
+	var doUnlock bool
+
+outer:
+	for len(args) > 0 {
+		switch args[0] {
+		case localhost.RunOnLocalHostLockMagicStr:
+			if len(args) < 2 {
+				return errMagicArgUnderflow
+			}
+			lockName = args[1]
+			args = args[2:]
+		case localhost.RunOnLocalHostUnlockMagicStr:
+			if len(args) < 2 {
+				return errMagicArgUnderflow
+			}
+			lockName = args[1]
+			doUnlock = true
+			args = args[2:]
+		default:
+			break outer
+		}
+	}
+
+	if doUnlock && len(args) > 0 {
+		return errUnexpectedArgs
+	}
+
 	return e.sm.Any(ctx, g, func(ctx context.Context, _ string, caller session.Caller) error {
+		if lockName != "" {
+			// lock must be called prior to unlocking to prevent unlocking the incorrect lock
+			logrus.Debugf("localLock lock %q", lockName)
+			localLock.Lock(ctx, lockName)
+			if doUnlock {
+				logrus.Debugf("localLock unlock %q", lockName)
+				localLock.Unlock()
+				return nil
+			}
+		}
+
 		logrus.Debugf("localexec dir=%s; args=%v", cwd, args)
 		err := localhost.LocalhostExec(ctx, caller, args, cwd, stdout, stderr)
 		if err != nil {
