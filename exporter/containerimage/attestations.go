@@ -5,14 +5,15 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	intoto "github.com/in-toto/in-toto-golang/in_toto"
 	"github.com/moby/buildkit/cache"
+	"github.com/moby/buildkit/exporter"
 	"github.com/moby/buildkit/exporter/attestation"
 	gatewaypb "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/solver"
-	"github.com/moby/buildkit/solver/result"
 	"github.com/moby/buildkit/version"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -27,7 +28,7 @@ var intotoPlatform ocispecs.Platform = ocispecs.Platform{
 }
 
 // supplementSBOM modifies SPDX attestations to include the file layers
-func supplementSBOM(ctx context.Context, s session.Group, target cache.ImmutableRef, targetRemote *solver.Remote, refs map[string]cache.ImmutableRef, att result.Attestation) (result.Attestation, error) {
+func supplementSBOM(ctx context.Context, s session.Group, target cache.ImmutableRef, targetRemote *solver.Remote, att exporter.Attestation) (exporter.Attestation, error) {
 	if att.Kind != gatewaypb.AttestationKindInToto {
 		return att, nil
 	}
@@ -35,7 +36,7 @@ func supplementSBOM(ctx context.Context, s session.Group, target cache.Immutable
 		return att, nil
 	}
 
-	content, err := attestation.ReadAll(ctx, s, refs, att)
+	content, err := attestation.ReadAll(ctx, s, att)
 	if err != nil {
 		return att, err
 	}
@@ -99,7 +100,7 @@ func supplementSBOM(ctx context.Context, s session.Group, target cache.Immutable
 		return att, err
 	}
 
-	return result.Attestation{
+	return exporter.Attestation{
 		Kind:        att.Kind,
 		Path:        att.Path,
 		ContentFunc: func() ([]byte, error) { return content, nil },
@@ -157,7 +158,8 @@ func newFileLayerFinder(target cache.ImmutableRef, remote *solver.Remote) (fileL
 }
 
 // find finds the layer that contains the file, returning the ImmutableRef and
-// descriptor for the layer.
+// descriptor for the layer. If the file searched for was deleted, find returns
+// the layer that created the file, not the one that deleted it.
 //
 // find is not concurrency-safe.
 func (c *fileLayerFinder) find(ctx context.Context, s session.Group, filename string) (cache.ImmutableRef, *ocispecs.Descriptor, error) {
@@ -177,6 +179,11 @@ func (c *fileLayerFinder) find(ctx context.Context, s session.Group, filename st
 
 		found := false
 		for _, f := range files {
+			if strings.HasPrefix(f, ".wh.") {
+				// skip whiteout files, we only care about file creations
+				continue
+			}
+
 			// add all files in this layer to the cache
 			if _, ok := c.cache[f]; ok {
 				continue

@@ -296,12 +296,12 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 	}
 
 	// if SOURCE_DATE_EPOCH is set, enable it for the exporter
-	if epochVal, ok := req.FrontendAttrs["build-arg:SOURCE_DATE_EPOCH"]; ok {
+	if v, ok := epoch.ParseBuildArgs(req.FrontendAttrs); ok {
 		if _, ok := req.ExporterAttrs[epoch.KeySourceDateEpoch]; !ok {
 			if req.ExporterAttrs == nil {
 				req.ExporterAttrs = make(map[string]string)
 			}
-			req.ExporterAttrs[epoch.KeySourceDateEpoch] = epochVal
+			req.ExporterAttrs[epoch.KeySourceDateEpoch] = v
 		}
 	}
 
@@ -358,10 +358,6 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 	}
 
 	var procs []llbsolver.Processor
-
-	if len(attests) > 0 {
-		procs = append(procs, proc.ForceRefsProcessor)
-	}
 
 	if attrs, ok := attests["sbom"]; ok {
 		src := attrs["generator"]

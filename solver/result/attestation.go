@@ -1,14 +1,28 @@
 package result
 
 import (
+	"reflect"
+
 	pb "github.com/moby/buildkit/frontend/gateway/pb"
 	digest "github.com/opencontainers/go-digest"
 )
 
-type Attestation struct {
+const (
+	AttestationReasonKey     = "reason"
+	AttestationInlineOnlyKey = "inline-only"
+)
+
+var (
+	AttestationReasonSBOM       = []byte("sbom")
+	AttestationReasonProvenance = []byte("provenance")
+)
+
+type Attestation[T any] struct {
 	Kind pb.AttestationKind
 
-	Ref         string
+	Metadata map[string][]byte
+
+	Ref         T
 	Path        string
 	ContentFunc func() ([]byte, error)
 
@@ -41,4 +55,24 @@ func FromDigestMap(m map[string]string) []digest.Digest {
 		ds = append(ds, digest.NewDigestFromEncoded(digest.Algorithm(k), v))
 	}
 	return ds
+}
+
+func ConvertAttestation[U any, V any](a *Attestation[U], fn func(U) (V, error)) (*Attestation[V], error) {
+	var ref V
+	if reflect.ValueOf(a.Ref).IsValid() {
+		var err error
+		ref, err = fn(a.Ref)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Attestation[V]{
+		Kind:        a.Kind,
+		Metadata:    a.Metadata,
+		Ref:         ref,
+		Path:        a.Path,
+		ContentFunc: a.ContentFunc,
+		InToto:      a.InToto,
+	}, nil
 }

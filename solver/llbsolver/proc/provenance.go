@@ -27,20 +27,9 @@ import (
 
 func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 	return func(ctx context.Context, res *llbsolver.Result, s *llbsolver.Solver, j *solver.Job) (*llbsolver.Result, error) {
-		if len(res.Refs) == 0 {
-			return nil, errors.New("provided result has no refs")
-		}
-
-		platformsBytes, ok := res.Metadata[exptypes.ExporterPlatformsKey]
-		if !ok {
-			return nil, errors.Errorf("unable to collect multiple refs, missing platforms mapping")
-		}
-
-		var ps exptypes.Platforms
-		if len(platformsBytes) > 0 {
-			if err := json.Unmarshal(platformsBytes, &ps); err != nil {
-				return nil, errors.Wrapf(err, "failed to parse platforms passed to provenance processor")
-			}
+		ps, err := exptypes.ParsePlatforms(res.Metadata)
+		if err != nil {
+			return nil, err
 		}
 
 		buildID := identity.NewID()
@@ -54,11 +43,9 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 			reproducible = b
 		}
 
-		var mode string
+		mode := "max"
 		if v, ok := attrs["mode"]; ok {
 			switch v {
-			case "disabled", "none":
-				return res, nil
 			case "full":
 				mode = "max"
 			case "max", "min":
@@ -68,8 +55,13 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 			}
 		}
 
+		var inlineOnly bool
+		if v, err := strconv.ParseBool(attrs["inline-only"]); v && err == nil {
+			inlineOnly = true
+		}
+
 		for _, p := range ps.Platforms {
-			cp, ok := res.Provenance.Refs[p.ID]
+			cp, ok := res.Provenance.FindRef(p.ID)
 			if !ok {
 				return nil, errors.New("no build info found for provenance")
 			}
@@ -87,7 +79,8 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 
 			var addLayers func() error
 
-			if mode != "max" {
+			switch mode {
+			case "min":
 				args := make(map[string]string)
 				for k, v := range pr.Invocation.Parameters.Args {
 					if strings.HasPrefix(k, "build-arg:") || strings.HasPrefix(k, "label:") {
@@ -99,13 +92,17 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 				pr.Invocation.Parameters.Args = args
 				pr.Invocation.Parameters.Secrets = nil
 				pr.Invocation.Parameters.SSH = nil
-			} else {
-				dgsts, err := provenance.AddBuildConfig(ctx, pr, res.Refs[p.ID])
+			case "max":
+				ref, ok := res.FindRef(p.ID)
+				if !ok {
+					return nil, errors.Errorf("could not find ref %s", p.ID)
+				}
+				dgsts, err := provenance.AddBuildConfig(ctx, pr, ref)
 				if err != nil {
 					return nil, err
 				}
 
-				r, err := res.Refs[p.ID].Result(ctx)
+				r, err := ref.Result(ctx)
 				if err != nil {
 					return nil, err
 				}
@@ -141,10 +138,16 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 
 					return nil
 				}
+			default:
+				return nil, errors.Errorf("invalid mode %q", mode)
 			}
 
-			res.AddAttestation(p.ID, result.Attestation{
+			res.AddAttestation(p.ID, llbsolver.Attestation{
 				Kind: gatewaypb.AttestationKindInToto,
+				Metadata: map[string][]byte{
+					result.AttestationReasonKey:     result.AttestationReasonProvenance,
+					result.AttestationInlineOnlyKey: []byte(strconv.FormatBool(inlineOnly)),
+				},
 				InToto: result.InTotoAttestation{
 					PredicateType: slsa.PredicateSLSAProvenance,
 				},
@@ -162,7 +165,7 @@ func ProvenanceProcessor(attrs map[string]string) llbsolver.Processor {
 					// TODO: pass indent to json.Marshal
 					return json.MarshalIndent(pr, "", "  ")
 				},
-			}, nil)
+			})
 		}
 
 		return res, nil

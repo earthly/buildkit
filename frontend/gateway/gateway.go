@@ -225,10 +225,11 @@ func (gf *gatewayFrontend) Solve(ctx context.Context, llbBridge frontend.Fronten
 	env = append(env, "BUILDKIT_EXPORTEDPRODUCT="+apicaps.ExportedProduct)
 
 	meta := executor.Meta{
-		Env:            env,
-		Args:           args,
-		Cwd:            cwd,
-		ReadonlyRootFS: readonly,
+		Env:                       env,
+		Args:                      args,
+		Cwd:                       cwd,
+		ReadonlyRootFS:            readonly,
+		RemoveMountStubsRecursive: true,
 	}
 
 	if v, ok := img.Config.Labels["moby.buildkit.frontend.network.none"]; ok {
@@ -700,6 +701,13 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 					return nil, err
 				}
 
+				if att.Ref != nil {
+					id := identity.NewID()
+					def := att.Ref.Definition()
+					lbf.refs[id] = att.Ref
+					pbAtt.Ref = &pb.Ref{Id: id, Def: def}
+				}
+
 				if pbRes.Attestations[k] == nil {
 					pbRes.Attestations[k] = &pb.Attestations{}
 				}
@@ -941,11 +949,18 @@ func (lbf *llbBridgeForwarder) Return(ctx context.Context, in *pb.ReturnRequest)
 	if in.Result.Attestations != nil {
 		for k, pbAtts := range in.Result.Attestations {
 			for _, pbAtt := range pbAtts.Attestation {
-				att, err := gwclient.AttestationFromPB(pbAtt)
+				att, err := gwclient.AttestationFromPB[solver.ResultProxy](pbAtt)
 				if err != nil {
 					return nil, err
 				}
-				r.AddAttestation(k, *att, nil)
+				if pbAtt.Ref != nil {
+					ref, err := lbf.cloneRef(pbAtt.Ref.Id)
+					if err != nil {
+						return nil, err
+					}
+					att.Ref = ref
+				}
+				r.AddAttestation(k, *att)
 			}
 		}
 	}
@@ -1290,15 +1305,16 @@ func (lbf *llbBridgeForwarder) ExecProcess(srv pb.LLBBridge_ExecProcessServer) e
 				pios[pid] = pio
 
 				proc, err := ctr.Start(initCtx, gwclient.StartRequest{
-					Args:         init.Meta.Args,
-					Env:          init.Meta.Env,
-					User:         init.Meta.User,
-					Cwd:          init.Meta.Cwd,
-					Tty:          init.Tty,
-					Stdin:        pio.processReaders[0],
-					Stdout:       pio.processWriters[1],
-					Stderr:       pio.processWriters[2],
-					SecurityMode: init.Security,
+					Args:                      init.Meta.Args,
+					Env:                       init.Meta.Env,
+					User:                      init.Meta.User,
+					Cwd:                       init.Meta.Cwd,
+					Tty:                       init.Tty,
+					Stdin:                     pio.processReaders[0],
+					Stdout:                    pio.processWriters[1],
+					Stderr:                    pio.processWriters[2],
+					SecurityMode:              init.Security,
+					RemoveMountStubsRecursive: init.Meta.RemoveMountStubsRecursive,
 				})
 				if err != nil {
 					return stack.Enable(err)

@@ -2,7 +2,6 @@ package local
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/moby/buildkit/exporter/util/epoch"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/filesync"
-	"github.com/moby/buildkit/solver/result"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/pkg/errors"
 	"github.com/tonistiigi/fsutil"
@@ -41,7 +39,7 @@ func New(opt Opt) (exporter.Exporter, error) {
 }
 
 func (e *localExporter) Resolve(ctx context.Context, opt map[string]string) (exporter.ExporterInstance, error) {
-	tm, _, err := epoch.ParseAttr(opt)
+	tm, _, err := epoch.ParseExporterAttrs(opt)
 	if err != nil {
 		return nil, err
 	}
@@ -93,24 +91,25 @@ func (e *localExporterInstance) Export(ctx context.Context, inp *exporter.Source
 		return nil, err
 	}
 
-	platformsBytes, ok := inp.Metadata[exptypes.ExporterPlatformsKey]
-	if len(inp.Refs) > 0 && !ok {
+	isMap := len(inp.Refs) > 0
+
+	if _, ok := inp.Metadata[exptypes.ExporterPlatformsKey]; isMap && !ok {
 		return nil, errors.Errorf("unable to export multiple refs, missing platforms mapping")
 	}
-
-	var p exptypes.Platforms
-	if ok && len(platformsBytes) > 0 {
-		if err := json.Unmarshal(platformsBytes, &p); err != nil {
-			return nil, errors.Wrapf(err, "failed to parse platforms passed to exporter")
-		}
+	p, err := exptypes.ParsePlatforms(inp.Metadata)
+	if err != nil {
+		return nil, err
 	}
-	isMap := len(p.Platforms) > 1
+
+	if !isMap && len(p.Platforms) > 1 {
+		return nil, errors.Errorf("unable to export multiple platforms without map")
+	}
 
 	now := time.Now().Truncate(time.Second)
 
-	export := func(ctx context.Context, k string, ref cache.ImmutableRef, attestations []result.Attestation) func() error {
+	export := func(ctx context.Context, k string, ref cache.ImmutableRef, attestations []exporter.Attestation) func() error {
 		return func() error {
-			outputFS, cleanup, err := CreateFS(ctx, sessionID, k, ref, inp.Refs, attestations, now, e.opts)
+			outputFS, cleanup, err := CreateFS(ctx, sessionID, k, ref, attestations, now, e.opts)
 			if err != nil {
 				return err
 			}
@@ -145,16 +144,13 @@ func (e *localExporterInstance) Export(ctx context.Context, inp *exporter.Source
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if len(inp.Refs) > 0 {
+	if len(p.Platforms) > 0 {
 		for _, p := range p.Platforms {
-			r, ok := inp.Refs[p.ID]
+			r, ok := inp.FindRef(p.ID)
 			if !ok {
 				return nil, errors.Errorf("failed to find ref for ID %s", p.ID)
 			}
 			eg.Go(export(ctx, p.ID, r, inp.Attestations[p.ID]))
-			if !isMap {
-				break
-			}
 		}
 	} else {
 		eg.Go(export(ctx, "", inp.Ref, nil))
