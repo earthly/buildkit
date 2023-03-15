@@ -3,6 +3,7 @@ package eodriver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/containerd/containerd/content"
@@ -88,6 +89,10 @@ func (mmp *MultiMultiProvider) AddImgSub(imgName string, dgst digest.Digest, p c
 
 // AddImg adds a new child image. The image is removed from the collection when the context is canceled.
 func (mmp *MultiMultiProvider) AddImg(ctx context.Context, imgName string, base content.Provider, baseDigest digest.Digest) error {
+	if baseDigest == "" {
+		return fmt.Errorf("baseDigest cant be empty")
+	}
+
 	// The config digest needs to be mapped manually - read out the manifest
 	// and find the config digest in there. Do most of this outside of the lock.
 	mfstRa, err := base.ReaderAt(ctx, ocispecs.Descriptor{Digest: baseDigest})
@@ -99,16 +104,19 @@ func (mmp *MultiMultiProvider) AddImg(ctx context.Context, imgName string, base 
 	if err != nil {
 		return err
 	}
-	var manifest struct {
-		Config struct {
-			Digest string `json:"digest"`
-		} `json:"config"`
-	}
-	err = json.Unmarshal(mfstDt, &manifest)
+	var mfst ocispecs.Manifest
+	err = json.Unmarshal(mfstDt, &mfst)
 	if err != nil {
 		return err
 	}
-	configDgst := digest.Digest(manifest.Config.Digest)
+	if mfst.Config.Digest == "" {
+		return fmt.Errorf("manifest config digest is missing")
+	}
+
+	configDgst := digest.Digest(mfst.Config.Digest)
+	if configDgst == "" {
+		return fmt.Errorf("configDgst cant be empty")
+	}
 
 	mmp.mu.Lock()
 	defer mmp.mu.Unlock()
@@ -133,6 +141,9 @@ func (mmp *MultiMultiProvider) AddImg(ctx context.Context, imgName string, base 
 }
 
 func (mmp *MultiMultiProvider) addDigestEntry(dgst digest.Digest, imgName string) {
+	if dgst == "" {
+		panic("dgst can't be empty")
+	}
 	imgSet, ok := mmp.digests[dgst]
 	if !ok {
 		imgSet = make(map[string]bool)

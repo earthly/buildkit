@@ -118,6 +118,8 @@ func (ic *ImageWriter) Commit(ctx context.Context, inp *exporter.Source, session
 			p = ps.Platforms[0]
 			if r, ok := inp.FindRef(p.ID); ok {
 				ref = r
+			} else {
+				return nil, errors.Errorf("failed to findRef for %s", p.ID) // earthly-specific to make failures easier to detect, TODO: submit PR upstream for this
 			}
 		} else {
 			ref = inp.Ref

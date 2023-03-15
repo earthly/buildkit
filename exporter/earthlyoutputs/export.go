@@ -238,9 +238,15 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 	if src.Ref != nil {
 		return nil, errors.Errorf("export with src.Ref not supported")
 	}
-	if src.Metadata == nil {
-		src.Metadata = make(map[string][]byte)
+
+	if len(src.Refs) == 0 {
+		// nothing to do
+		return map[string]string{}, nil
 	}
+	if src.Metadata == nil {
+		return nil, errors.Errorf("metadata is missing")
+	}
+
 	for k, v := range e.meta {
 		src.Metadata[k] = v
 	}
@@ -292,10 +298,10 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 			ip = true
 		}
 		if string(simpleMd["export-dir"]) == "true" {
-			expSrc := &exporter.Source{
-				Ref:      ref,
-				Refs:     map[string]cache.ImmutableRef{},
-				Metadata: simpleMd,
+			expSrc := &exporter.Source{}
+			expSrc.SetRef(ref)
+			for k, v := range simpleMd {
+				expSrc.AddMeta(k, v)
 			}
 			dirExpSrcs = append(dirExpSrcs, expSrc)
 		}
@@ -320,10 +326,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				img, ok := images[imgName]
 				if !ok {
 					img = &imgData{
-						expSrc: &exporter.Source{
-							Refs:     map[string]cache.ImmutableRef{},
-							Metadata: make(map[string][]byte),
-						},
+						expSrc: &exporter.Source{},
 					}
 					images[imgName] = img
 				}
@@ -333,21 +336,21 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				img.insecurePush = img.insecurePush || ip
 				img.opts = opts
 
-				img.expSrc.Metadata["image.name"] = []byte(imgName)
+				img.expSrc.AddMeta("image.name", []byte(imgName))
 				if eilr != "" {
-					img.expSrc.Metadata["export-image-local-registry"] = []byte(eilr)
+					img.expSrc.AddMeta("export-image-local-registry", []byte(eilr))
 				}
 				if le {
-					img.expSrc.Metadata["export-image"] = []byte("true")
+					img.expSrc.AddMeta("export-image", []byte("true"))
 				}
 				if sp {
-					img.expSrc.Metadata["export-image-push"] = []byte("true")
+					img.expSrc.AddMeta("export-image-push", []byte("true"))
 				}
 				if ip {
-					img.expSrc.Metadata["insecure-push"] = []byte("true")
+					img.expSrc.AddMeta("insecure-push", []byte("true"))
 				}
 				if platStr != "" {
-					img.expSrc.Refs[platStr] = ref
+					img.expSrc.AddRef(platStr, ref)
 
 					p, err := platforms.Parse(platStr)
 					if err != nil {
@@ -359,14 +362,24 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 					}
 					img.platforms = append(img.platforms, plat)
 				} else {
-					img.expSrc.Ref = ref
+					ps, err := exptypes.ParsePlatforms(img.expSrc.Metadata)
+					if err != nil {
+						return nil, err
+					}
+					img.expSrc.SetRef(ref)
+
+					dt, err := json.Marshal(ps)
+					if err != nil {
+						return nil, err
+					}
+					img.expSrc.AddMeta(exptypes.ExporterPlatformsKey, dt)
 				}
 
 				for mdK, mdV := range simpleMd {
 					if platStr != "" {
-						img.expSrc.Metadata[fmt.Sprintf("%s/%s", mdK, platStr)] = mdV
+						img.expSrc.AddMeta(fmt.Sprintf("%s/%s", mdK, platStr), mdV)
 					} else {
-						img.expSrc.Metadata[mdK] = mdV
+						img.expSrc.AddMeta(mdK, mdV)
 					}
 				}
 			}
@@ -379,7 +392,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 			if err != nil {
 				return nil, err
 			}
-			img.expSrc.Metadata[exptypes.ExporterPlatformsKey] = dt
+			img.expSrc.AddMeta(exptypes.ExporterPlatformsKey, dt)
 		}
 	}
 
@@ -443,6 +456,9 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		for mdK, mdV := range expSrc.Metadata {
 			md[safeGrpcMetaKey(mdK)] = string(mdV)
 		}
+		if expSrc.Ref == nil {
+			return nil, fmt.Errorf("dirExpSrcs got nil ref")
+		}
 		dirEG.Go(exportDirFunc(egCtx, md, caller, expSrc.Ref, sessionID))
 	}
 
@@ -491,7 +507,24 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 			}
 		}
 		if img.expSrc.Ref != nil { // This is a copy and paste of the above code
-			remotes, err := img.expSrc.Ref.GetRemotes(ctx, false, e.opts.RefCfg, false, session.NewGroup(sessionID))
+			if len(img.platforms) != 0 {
+				return nil, fmt.Errorf("img.platforms should not be set when a single ref is used")
+			}
+
+			var ref cache.ImmutableRef
+			var p exptypes.Platform
+			if len(img.platforms) > 0 {
+				p = img.platforms[0]
+				if r, ok := img.expSrc.FindRef(p.ID); ok {
+					ref = r
+				} else {
+					return nil, fmt.Errorf("img.expSrc.FindRef failed on %s", p.ID)
+				}
+			} else {
+				ref = img.expSrc.Ref
+			}
+
+			remotes, err := ref.GetRemotes(ctx, false, e.opts.RefCfg, false, session.NewGroup(sessionID))
 			if err != nil {
 				return nil, err
 			}
