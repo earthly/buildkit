@@ -234,17 +234,17 @@ type imgData struct {
 	opts containerimage.ImageCommitOpts
 }
 
-func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source, sessionID string) (map[string]string, error) {
+func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source, sessionID string) (map[string]string, exporter.DescriptorReference, error) {
 	if src.Ref != nil {
-		return nil, errors.Errorf("export with src.Ref not supported")
+		return nil, nil, errors.Errorf("export with src.Ref not supported")
 	}
 
 	if len(src.Refs) == 0 {
 		// nothing to do
-		return map[string]string{}, nil
+		return map[string]string{}, nil, nil
 	}
 	if src.Metadata == nil {
-		return nil, errors.Errorf("metadata is missing")
+		return nil, nil, errors.Errorf("metadata is missing")
 	}
 
 	for k, v := range e.meta {
@@ -271,7 +271,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		opts := e.opts
 		as, _, err := containerimage.ParseAnnotations(simpleMd)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		opts.Annotations = as.Merge(opts.Annotations)
 
@@ -311,14 +311,14 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				name = string(n)
 			}
 			if name == "" {
-				return nil, errors.Errorf("exporting image with no name")
+				return nil, nil, errors.Errorf("exporting image with no name")
 			}
 			imgNames, err := normalizedNames(name)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if len(imgNames) == 0 {
-				return nil, errors.Errorf("exporting image with no name")
+				return nil, nil, errors.Errorf("exporting image with no name")
 			}
 			delete(simpleMd, "image.name")
 			platStr := string(simpleMd["platform"])
@@ -354,7 +354,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 
 					p, err := platforms.Parse(platStr)
 					if err != nil {
-						return nil, errors.Wrap(err, "parse platform")
+						return nil, nil, errors.Wrap(err, "parse platform")
 					}
 					plat := exptypes.Platform{
 						ID:       platStr,
@@ -364,13 +364,13 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				} else {
 					ps, err := exptypes.ParsePlatforms(img.expSrc.Metadata)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					img.expSrc.SetRef(ref)
 
 					dt, err := json.Marshal(ps)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					img.expSrc.AddMeta(exptypes.ExporterPlatformsKey, dt)
 				}
@@ -390,7 +390,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 			expPlats := &exptypes.Platforms{Platforms: img.platforms}
 			dt, err := json.Marshal(expPlats)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			img.expSrc.AddMeta(exptypes.ExporterPlatformsKey, dt)
 		}
@@ -398,7 +398,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 
 	ctx, done, err := leaseutil.WithLease(ctx, e.opt.LeaseManager, leaseutil.MakeTemporary)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer done(context.TODO())
 
@@ -406,7 +406,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 	for imgName, img := range images {
 		desc, err := e.opt.ImageWriter.Commit(ctx, img.expSrc, sessionID, &img.opts)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		img.mfstDesc = desc
 		defer func() {
@@ -424,7 +424,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		}
 		dtDesc, err := json.Marshal(desc)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		descKey := fmt.Sprintf("%s|%s", imgName, exptypes.ExporterImageDescriptorKey)
 		resp[descKey] = base64.StdEncoding.EncodeToString(dtDesc)
@@ -434,7 +434,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 	defer cancel()
 	caller, err := e.opt.SessionManager.Get(timeoutCtx, sessionID, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, img := range images {
@@ -447,7 +447,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		}
 		img.tarWriter, err = filesync.CopyFileWriter(ctx, md, caller)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	dirEG, egCtx := errgroup.WithContext(ctx)
@@ -457,7 +457,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 			md[safeGrpcMetaKey(mdK)] = string(mdV)
 		}
 		if expSrc.Ref == nil {
-			return nil, fmt.Errorf("dirExpSrcs got nil ref")
+			return nil, nil, fmt.Errorf("dirExpSrcs got nil ref")
 		}
 		dirEG.Go(exportDirFunc(egCtx, md, caller, expSrc.Ref, sessionID))
 	}
@@ -473,7 +473,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 
 			err := mmp.AddImg(ctx, img.localRegExport, e.opt.ImageWriter.ContentStore(), img.mfstDesc.Digest)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		if img.localExport || img.shouldPush {
@@ -483,21 +483,21 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		for _, r := range img.expSrc.Refs {
 			remotes, err := r.GetRemotes(ctx, false, e.opts.RefCfg, false, session.NewGroup(sessionID))
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			remote := remotes[0]
 			// unlazy before export as some consumers do not handle
 			// layer blobs in parallel (whereas unlazy does)
 			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
 				if err := unlazier.Unlazy(ctx); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 			for _, desc := range remote.Descriptors {
 				if img.localRegExport != "" {
 					err := mmp.AddImgSub(img.localRegExport, desc.Digest, remote.Provider)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 				}
 				if img.localExport || img.shouldPush {
@@ -508,7 +508,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		}
 		if img.expSrc.Ref != nil { // This is a copy and paste of the above code
 			if len(img.platforms) != 0 {
-				return nil, fmt.Errorf("img.platforms should not be set when a single ref is used")
+				return nil, nil, fmt.Errorf("img.platforms should not be set when a single ref is used")
 			}
 
 			var ref cache.ImmutableRef
@@ -518,7 +518,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				if r, ok := img.expSrc.FindRef(p.ID); ok {
 					ref = r
 				} else {
-					return nil, fmt.Errorf("img.expSrc.FindRef failed on %s", p.ID)
+					return nil, nil, fmt.Errorf("img.expSrc.FindRef failed on %s", p.ID)
 				}
 			} else {
 				ref = img.expSrc.Ref
@@ -526,21 +526,21 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 
 			remotes, err := ref.GetRemotes(ctx, false, e.opts.RefCfg, false, session.NewGroup(sessionID))
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			remote := remotes[0]
 			// unlazy before export as some consumers do not handle
 			// layer blobs in parallel (whereas unlazy does)
 			if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
 				if err := unlazier.Unlazy(ctx); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 			for _, desc := range remote.Descriptors {
 				if img.localRegExport != "" {
 					err := mmp.AddImgSub(img.localRegExport, desc.Digest, remote.Provider)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 				}
 				if img.localExport || img.shouldPush {
@@ -556,7 +556,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				e.opt.ImageWriter.ContentStore(), img.mfstDesc.Digest,
 				imgName, img.insecurePush, e.opt.RegistryHosts, false, annotations)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
@@ -575,10 +575,10 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		select {
 		case err := <-pullPingChan:
 			if err != nil {
-				return nil, errors.Wrap(err, "pull ping error")
+				return nil, nil, errors.Wrap(err, "pull ping error")
 			}
 		case <-caller.Context().Done():
-			return nil, errors.Wrap(caller.Context().Err(), "caller context done")
+			return nil, nil, errors.Wrap(caller.Context().Err(), "caller context done")
 		}
 		for _, img := range images {
 			if img.localRegExport != "" {
@@ -604,7 +604,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 					//                     we continue to try to send data.
 					continue
 				}
-				return nil, err
+				return nil, nil, err
 			}
 			err = img.tarWriter.Close()
 			if grpcerrors.Code(err) == codes.AlreadyExists {
@@ -617,7 +617,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				continue
 			}
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			img.localExportReport()
 		}
@@ -630,10 +630,10 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 	}
 
 	if err := dirEG.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return resp, nil
+	return resp, nil, nil
 }
 
 func (e *imageExporterInstance) Config() *exporter.Config {

@@ -35,9 +35,7 @@ const (
 	CapSourceHTTPPerm     apicaps.CapID = "source.http.perm"
 	CapSourceHTTPUIDGID   apicaps.CapID = "soruce.http.uidgid"
 
-	CapSourceOCILayout           apicaps.CapID = "source.ocilayout"
-	CapSourceOCILayoutSessionID  apicaps.CapID = "source.ocilayout.sessionid"
-	CapSourceOCILayoutLayerLimit apicaps.CapID = "source.ocilayout.layerlimit"
+	CapSourceOCILayout apicaps.CapID = "source.ocilayout"
 
 	CapBuildOpLLBFileName apicaps.CapID = "source.buildop.llbfilename"
 
@@ -51,7 +49,7 @@ const (
 	CapExecMetaUlimit                    apicaps.CapID = "exec.meta.ulimit"
 	CapExecMetaRemoveMountStubsRecursive apicaps.CapID = "exec.meta.removemountstubs.recursive"
 	CapExecMountBind                     apicaps.CapID = "exec.mount.bind"
-	CapExecMountBindReadWriteNoOuput     apicaps.CapID = "exec.mount.bind.readwrite-nooutput"
+	CapExecMountBindReadWriteNoOutput    apicaps.CapID = "exec.mount.bind.readwrite-nooutput"
 	CapExecMountCache                    apicaps.CapID = "exec.mount.cache"
 	CapExecMountCacheSharing             apicaps.CapID = "exec.mount.cache.sharing"
 	CapExecMountSelector                 apicaps.CapID = "exec.mount.selector"
@@ -87,6 +85,8 @@ const (
 
 	// CapSourceDateEpoch is the capability to automatically handle the date epoch
 	CapSourceDateEpoch apicaps.CapID = "exporter.sourcedateepoch"
+
+	CapSourcePolicy apicaps.CapID = "source.policy"
 )
 
 func init() {
@@ -223,18 +223,6 @@ func init() {
 	})
 
 	Caps.Init(apicaps.Cap{
-		ID:      CapSourceOCILayoutSessionID,
-		Enabled: true,
-		Status:  apicaps.CapStatusExperimental,
-	})
-
-	Caps.Init(apicaps.Cap{
-		ID:      CapSourceOCILayoutLayerLimit,
-		Enabled: true,
-		Status:  apicaps.CapStatusExperimental,
-	})
-
-	Caps.Init(apicaps.Cap{
 		ID:      CapSourceHTTPUIDGID,
 		Enabled: true,
 		Status:  apicaps.CapStatusExperimental,
@@ -301,7 +289,7 @@ func init() {
 	})
 
 	Caps.Init(apicaps.Cap{
-		ID:      CapExecMountBindReadWriteNoOuput,
+		ID:      CapExecMountBindReadWriteNoOutput,
 		Enabled: true,
 		Status:  apicaps.CapStatusExperimental,
 	})
@@ -469,6 +457,12 @@ func init() {
 	Caps.Init(apicaps.Cap{
 		ID:      CapSourceDateEpoch,
 		Name:    "source date epoch",
+		Enabled: true,
+		Status:  apicaps.CapStatusExperimental,
+	})
+
+	Caps.Init(apicaps.Cap{
+		ID:      CapSourcePolicy,
 		Enabled: true,
 		Status:  apicaps.CapStatusExperimental,
 	})

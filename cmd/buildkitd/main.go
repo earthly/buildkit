@@ -78,6 +78,9 @@ func init() {
 	if reexec.Init() {
 		os.Exit(0)
 	}
+
+	// enable in memory recording for buildkitd traces
+	detect.Recorder = detect.NewTraceRecorder()
 }
 
 var propagators = propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
@@ -741,6 +744,8 @@ func newController(c *cli.Context, cfg *config.Config, shutdownCh chan struct{})
 		TraceCollector:            tc,
 		HistoryDB:                 historyDB,
 		LeaseManager:              w.LeaseManager(),
+		ContentStore:              w.ContentStore(),
+		HistoryConfig:             cfg.History,
 	})
 }
 

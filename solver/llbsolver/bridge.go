@@ -23,6 +23,8 @@ import (
 	llberrdefs "github.com/moby/buildkit/solver/llbsolver/errdefs"
 	"github.com/moby/buildkit/solver/llbsolver/provenance"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/sourcepolicy"
+	spb "github.com/moby/buildkit/sourcepolicy/pb"
 	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/flightcontrol"
 	"github.com/moby/buildkit/util/progress"
@@ -66,7 +68,7 @@ func (b *llbBridge) Warn(ctx context.Context, dgst digest.Digest, msg string, op
 	})
 }
 
-func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImports []gw.CacheOptionsEntry) (solver.CachedResultWithProvenance, error) {
+func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImports []gw.CacheOptionsEntry, pol []*spb.Policy) (solver.CachedResultWithProvenance, error) {
 	w, err := b.resolveWorker()
 	if err != nil {
 		return nil, err
@@ -81,6 +83,21 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	// It seems like the cleaner approach is to bake this in somewhere into the edge or Load
 	eg, _ := errgroup.WithContext(ctx)
 
+	srcPol, err := loadSourcePolicy(b.builder)
+	if err != nil {
+		return nil, err
+	}
+	var polEngine SourcePolicyEvaluator
+	if srcPol != nil || len(pol) > 0 {
+		if srcPol != nil {
+			pol = append([]*spb.Policy{srcPol}, pol...)
+		}
+
+		polEngine = sourcepolicy.NewEngine(pol)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var cms []solver.CacheManager
 	for _, im := range cacheImports {
 		cmID, err := cmKey(im)
@@ -132,7 +149,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	}
 	dpc := &detectPrunedCacheID{}
 
-	edge, err := Load(def, dpc.Load, ValidateEntitlements(ent), WithCacheSources(cms), NormalizeRuntimePlatforms(), WithValidateCaps())
+	edge, err := Load(ctx, def, polEngine, dpc.Load, ValidateEntitlements(ent), WithCacheSources(cms), NormalizeRuntimePlatforms(), WithValidateCaps())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load LLB")
 	}
@@ -200,7 +217,7 @@ func (b *llbBridge) Export(ctx context.Context, refs map[string]cache.ImmutableR
 		}
 		sessionID := sessionIDs[0]
 		var err error
-		_, err = exp.Exporter.Export(ctx, inp, sessionID)
+		_, _, err = exp.Exporter.Export(ctx, inp, sessionID)
 		return err
 	})
 }
@@ -278,7 +295,7 @@ func (rp *resultProxy) wrapError(err error) error {
 }
 
 func (rp *resultProxy) loadResult(ctx context.Context) (solver.CachedResultWithProvenance, error) {
-	res, err := rp.b.loadResult(ctx, rp.req.Definition, rp.req.CacheImports)
+	res, err := rp.b.loadResult(ctx, rp.req.Definition, rp.req.CacheImports, rp.req.SourcePolicies)
 	var ee *llberrdefs.ExecError
 	if errors.As(err, &ee) {
 		ee.EachRef(func(res solver.Result) error {

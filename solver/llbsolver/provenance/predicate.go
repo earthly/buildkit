@@ -4,7 +4,8 @@ import (
 	"strings"
 
 	"github.com/containerd/containerd/platforms"
-	slsa "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2"
+	slsa "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common"
+	slsa02 "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2"
 	"github.com/moby/buildkit/util/purl"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/package-url/packageurl-go"
@@ -15,16 +16,16 @@ const (
 )
 
 type ProvenancePredicate struct {
-	slsa.ProvenancePredicate
+	slsa02.ProvenancePredicate
 	Invocation  ProvenanceInvocation `json:"invocation,omitempty"`
 	BuildConfig *BuildConfig         `json:"buildConfig,omitempty"`
 	Metadata    *ProvenanceMetadata  `json:"metadata,omitempty"`
 }
 
 type ProvenanceInvocation struct {
-	ConfigSource slsa.ConfigSource `json:"configSource,omitempty"`
-	Parameters   Parameters        `json:"parameters,omitempty"`
-	Environment  Environment       `json:"environment,omitempty"`
+	ConfigSource slsa02.ConfigSource `json:"configSource,omitempty"`
+	Parameters   Parameters          `json:"parameters,omitempty"`
+	Environment  Environment         `json:"environment,omitempty"`
 }
 
 type Parameters struct {
@@ -42,14 +43,9 @@ type Environment struct {
 }
 
 type ProvenanceMetadata struct {
-	slsa.ProvenanceMetadata
-	Completeness     ProvenanceComplete `json:"completeness"`
-	BuildKitMetadata BuildKitMetadata   `json:"https://mobyproject.org/buildkit@v1#metadata,omitempty"`
-}
-
-type ProvenanceComplete struct {
-	slsa.ProvenanceComplete
-	Hermetic bool `json:"https://mobyproject.org/buildkit@v1#hermetic,omitempty"`
+	slsa02.ProvenanceMetadata
+	BuildKitMetadata BuildKitMetadata `json:"https://mobyproject.org/buildkit@v1#metadata,omitempty"`
+	Hermetic         bool             `json:"https://mobyproject.org/buildkit@v1#hermetic,omitempty"`
 }
 
 type BuildKitMetadata struct {
@@ -205,19 +201,19 @@ func NewPredicate(c *Capture) (*ProvenancePredicate, error) {
 
 	pr := &ProvenancePredicate{
 		Invocation: inv,
-		ProvenancePredicate: slsa.ProvenancePredicate{
+		ProvenancePredicate: slsa02.ProvenancePredicate{
 			BuildType: BuildKitBuildType,
 			Materials: materials,
 		},
 		Metadata: &ProvenanceMetadata{
-			Completeness: ProvenanceComplete{
-				ProvenanceComplete: slsa.ProvenanceComplete{
+			ProvenanceMetadata: slsa02.ProvenanceMetadata{
+				Completeness: slsa02.ProvenanceComplete{
 					Parameters:  c.Frontend != "",
 					Environment: true,
 					Materials:   !incompleteMaterials,
 				},
-				Hermetic: !incompleteMaterials && !c.NetworkAccess,
 			},
+			Hermetic: !incompleteMaterials && !c.NetworkAccess,
 		},
 	}
 
@@ -233,6 +229,7 @@ func FilterArgs(m map[string]string) map[string]string {
 		"cgroup-parent":      {},
 		"image-resolve-mode": {},
 		"platform":           {},
+		"cache-imports":      {},
 	}
 	out := make(map[string]string)
 	for k, v := range m {

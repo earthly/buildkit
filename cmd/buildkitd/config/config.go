@@ -27,7 +27,8 @@ type Config struct {
 
 	DNS *DNSConfig `toml:"dns"`
 
-	Health HealthConfig `toml:"health"`
+	Health  HealthConfig   `toml:"health"`
+	History *HistoryConfig `toml:"history"`
 }
 
 type GRPCConfig struct {
@@ -143,4 +144,9 @@ type Hook struct {
 	Args    []string
 	Env     []string
 	Timeout *int
+}
+
+type HistoryConfig struct {
+	MaxAge     int64 `toml:"maxAge"`
+	MaxEntries int64 `toml:"maxEntries"`
 }

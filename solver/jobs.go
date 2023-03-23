@@ -16,6 +16,7 @@ import (
 	"github.com/moby/buildkit/util/tracing"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -230,16 +231,18 @@ func (sb *subBuilder) EachValue(ctx context.Context, key string, fn func(interfa
 }
 
 type Job struct {
-	list        *Solver
-	pr          *progress.MultiReader
-	pw          progress.Writer
-	span        trace.Span
-	values      sync.Map
-	id          string
-	startedTime time.Time
+	list          *Solver
+	pr            *progress.MultiReader
+	pw            progress.Writer
+	span          trace.Span
+	values        sync.Map
+	id            string
+	startedTime   time.Time
+	completedTime time.Time
 
 	progressCloser func()
 	SessionID      string
+	uniqueID       string // unique ID is used for provenance. We use a different field that client can't control
 }
 
 type SolverOpt struct {
@@ -450,6 +453,7 @@ func (jl *Solver) NewJob(id string) (*Job, error) {
 		span:           span,
 		id:             id,
 		startedTime:    time.Now(),
+		uniqueID:       identity.NewID(),
 	}
 	jl.jobs[id] = j
 
@@ -557,9 +561,12 @@ func (j *Job) walkProvenance(ctx context.Context, e Edge, f func(ProvenanceProvi
 	return nil
 }
 
-func (j *Job) Discard() error {
-	defer j.progressCloser()
+func (j *Job) CloseProgress() {
+	j.progressCloser()
+	j.pw.Close()
+}
 
+func (j *Job) Discard() error {
 	j.list.mu.Lock()
 	defer j.list.mu.Unlock()
 
@@ -587,6 +594,17 @@ func (j *Job) Discard() error {
 
 func (j *Job) StartedTime() time.Time {
 	return j.startedTime
+}
+
+func (j *Job) RegisterCompleteTime() time.Time {
+	if j.completedTime.IsZero() {
+		j.completedTime = time.Now()
+	}
+	return j.completedTime
+}
+
+func (j *Job) UniqueID() string {
+	return j.uniqueID
 }
 
 func (j *Job) InContext(ctx context.Context, f func(context.Context, session.Group) error) error {
@@ -671,7 +689,7 @@ func (s *sharedOp) LoadCache(ctx context.Context, rec *CacheRecord) (Result, err
 		ctx = trace.ContextWithSpan(ctx, s.st.mspan)
 	}
 	// no cache hit. start evaluating the node
-	span, ctx := tracing.StartSpan(ctx, "load cache: "+s.st.vtx.Name())
+	span, ctx := tracing.StartSpan(ctx, "load cache: "+s.st.vtx.Name(), trace.WithAttributes(attribute.String("vertex", s.st.vtx.Digest().String())))
 	notifyCompleted := notifyStarted(ctx, &s.st.clientVertex, true)
 	res, err := s.Cache().Load(withAncestorCacheOpts(ctx, s.st), rec)
 	tracing.FinishWithError(span, err)
@@ -783,7 +801,7 @@ func (s *sharedOp) CacheMap(ctx context.Context, index int) (resp *cacheMapResp,
 		ctx = withAncestorCacheOpts(ctx, s.st)
 		if len(s.st.vtx.Inputs()) == 0 {
 			// no cache hit. start evaluating the node
-			span, ctx := tracing.StartSpan(ctx, "cache request: "+s.st.vtx.Name())
+			span, ctx := tracing.StartSpan(ctx, "cache request: "+s.st.vtx.Name(), trace.WithAttributes(attribute.String("vertex", s.st.vtx.Digest().String())))
 			notifyCompleted := notifyStarted(ctx, &s.st.clientVertex, false)
 			defer func() {
 				tracing.FinishWithError(span, retErr)
@@ -862,7 +880,7 @@ func (s *sharedOp) Exec(ctx context.Context, inputs []Result) (outputs []Result,
 		ctx = withAncestorCacheOpts(ctx, s.st)
 
 		// no cache hit. start evaluating the node
-		span, ctx := tracing.StartSpan(ctx, s.st.vtx.Name())
+		span, ctx := tracing.StartSpan(ctx, s.st.vtx.Name(), trace.WithAttributes(attribute.String("vertex", s.st.vtx.Digest().String())))
 		notifyCompleted := notifyStarted(ctx, &s.st.clientVertex, false)
 		defer func() {
 			tracing.FinishWithError(span, retErr)

@@ -548,10 +548,14 @@ func (lbf *llbBridgeForwarder) ResolveImageConfig(ctx context.Context, req *pb.R
 		}
 	}
 	dgst, dt, err := lbf.llbBridge.ResolveImageConfig(ctx, req.Ref, llb.ResolveImageConfigOpt{
+		ResolverType: llb.ResolverType(req.ResolverType),
 		Platform:     platform,
 		ResolveMode:  req.ResolveMode,
 		LogName:      req.LogName,
-		ResolverType: llb.ResolverType(req.ResolverType),
+		Store: llb.ResolveImageConfigOptStore{
+			SessionID: req.SessionID,
+			StoreID:   req.StoreID,
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -632,6 +636,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 		FrontendOpt:    req.FrontendOpt,
 		FrontendInputs: req.FrontendInputs,
 		CacheImports:   cacheImports,
+		SourcePolicies: req.SourcePolicies,
 	}, lbf.sid)
 	if err != nil {
 		return nil, lbf.wrapSolveError(err)

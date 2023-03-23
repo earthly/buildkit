@@ -8,13 +8,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	contentapi "github.com/containerd/containerd/api/services/content/v1"
+	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/leases"
+	"github.com/containerd/containerd/services/content/contentserver"
 	"github.com/docker/distribution/reference"
 	"github.com/mitchellh/hashstructure/v2"
 	controlapi "github.com/moby/buildkit/api/services/control"
 	apitypes "github.com/moby/buildkit/api/types"
 	"github.com/moby/buildkit/cache/remotecache"
 	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/cmd/buildkitd/config"
 	controlgateway "github.com/moby/buildkit/control/gateway"
 	"github.com/moby/buildkit/exporter"
 	"github.com/moby/buildkit/exporter/util/epoch"
@@ -32,6 +36,7 @@ import (
 	"github.com/moby/buildkit/util/tracing/transform"
 	"github.com/moby/buildkit/version"
 	"github.com/moby/buildkit/worker"
+	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -53,6 +58,8 @@ type Opt struct {
 	TraceCollector            sdktrace.SpanExporter
 	HistoryDB                 *bbolt.DB
 	LeaseManager              leases.Manager
+	ContentStore              content.Store
+	HistoryConfig             *config.HistoryConfig
 }
 
 type Controller struct { // TODO: ControlService
@@ -76,6 +83,8 @@ func NewController(opt Opt) (*Controller, error) {
 	hq := llbsolver.NewHistoryQueue(llbsolver.HistoryQueueOpt{
 		DB:           opt.HistoryDB,
 		LeaseManager: opt.LeaseManager,
+		ContentStore: opt.ContentStore,
+		CleanConfig:  opt.HistoryConfig,
 	})
 
 	s, err := llbsolver.New(llbsolver.Opt{
@@ -116,6 +125,9 @@ func (c *Controller) Register(server *grpc.Server) {
 	controlapi.RegisterControlServer(server, c)
 	c.gatewayForwarder.Register(server)
 	tracev1.RegisterTraceServiceServer(server, c)
+
+	store := &roContentStore{c.opt.ContentStore}
+	contentapi.RegisterContentServer(server, contentserver.New(store))
 }
 
 func (c *Controller) DiskUsage(ctx context.Context, r *controlapi.DiskUsageRequest) (*controlapi.DiskUsageResponse, error) {
@@ -236,12 +248,28 @@ func (c *Controller) Export(ctx context.Context, req *tracev1.ExportTraceService
 }
 
 func (c *Controller) ListenBuildHistory(req *controlapi.BuildHistoryRequest, srv controlapi.Control_ListenBuildHistoryServer) error {
-	return c.history.Listen(srv.Context(), req.Ref, req.ActiveOnly, func(h *controlapi.BuildHistoryEvent) error {
+	return c.history.Listen(srv.Context(), req, func(h *controlapi.BuildHistoryEvent) error {
 		if err := srv.Send(h); err != nil {
 			return err
 		}
 		return nil
 	})
+}
+
+func (c *Controller) UpdateBuildHistory(ctx context.Context, req *controlapi.UpdateBuildHistoryRequest) (*controlapi.UpdateBuildHistoryResponse, error) {
+	if !req.Delete {
+		err := c.history.UpdateRef(ctx, req.Ref, func(r *controlapi.BuildHistoryRecord) error {
+			if req.Pinned == r.Pinned {
+				return nil
+			}
+			r.Pinned = req.Pinned
+			return nil
+		})
+		return &controlapi.UpdateBuildHistoryResponse{}, err
+	}
+
+	err := c.history.Delete(ctx, req.Ref)
+	return &controlapi.UpdateBuildHistoryResponse{}, err
 }
 
 func translateLegacySolveRequest(req *controlapi.SolveRequest) error {
@@ -368,8 +396,14 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to parse sbom generator %s", src)
 		}
+
+		useCache := true
+		if v, ok := req.FrontendAttrs["no-cache"]; ok && v == "" {
+			// disable cache if cache is disabled for all stages
+			useCache = false
+		}
 		ref = reference.TagNameOnly(ref)
-		procs = append(procs, proc.SBOMProcessor(ref.String()))
+		procs = append(procs, proc.SBOMProcessor(ref.String(), useCache))
 	}
 
 	if attrs, ok := attests["provenance"]; ok {
@@ -385,7 +419,7 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 	}, llbsolver.ExporterRequest{
 		Exporter:       expi,
 		CacheExporters: cacheExporters,
-	}, req.Entitlements, procs)
+	}, req.Entitlements, procs, req.Internal, req.SourcePolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -408,67 +442,9 @@ func (c *Controller) Status(req *controlapi.StatusRequest, stream controlapi.Con
 			if !ok {
 				return nil
 			}
-			logSize := 0
-			for {
-				retry := false
-				sr := controlapi.StatusResponse{}
-				for _, v := range ss.Vertexes {
-					sr.Vertexes = append(sr.Vertexes, &controlapi.Vertex{
-						Digest:        v.Digest,
-						Inputs:        v.Inputs,
-						Name:          v.Name,
-						Started:       v.Started,
-						Completed:     v.Completed,
-						Error:         v.Error,
-						Cached:        v.Cached,
-						ProgressGroup: v.ProgressGroup,
-					})
-				}
-				for _, v := range ss.Statuses {
-					sr.Statuses = append(sr.Statuses, &controlapi.VertexStatus{
-						ID:        v.ID,
-						Vertex:    v.Vertex,
-						Name:      v.Name,
-						Current:   v.Current,
-						Total:     v.Total,
-						Timestamp: v.Timestamp,
-						Started:   v.Started,
-						Completed: v.Completed,
-					})
-				}
-				for i, v := range ss.Logs {
-					sr.Logs = append(sr.Logs, &controlapi.VertexLog{
-						Vertex:    v.Vertex,
-						Stream:    int64(v.Stream),
-						Msg:       v.Data,
-						Timestamp: v.Timestamp,
-					})
-					logSize += len(v.Data) + emptyLogVertexSize
-					// avoid logs growing big and split apart if they do
-					if logSize > 1024*1024 {
-						ss.Vertexes = nil
-						ss.Statuses = nil
-						ss.Logs = ss.Logs[i+1:]
-						retry = true
-						break
-					}
-				}
-				for _, v := range ss.Warnings {
-					sr.Warnings = append(sr.Warnings, &controlapi.VertexWarning{
-						Vertex: v.Vertex,
-						Level:  int64(v.Level),
-						Short:  v.Short,
-						Detail: v.Detail,
-						Info:   v.SourceInfo,
-						Ranges: v.Range,
-						Url:    v.URL,
-					})
-				}
-				if err := stream.SendMsg(&sr); err != nil {
+			for _, sr := range ss.Marshal() {
+				if err := stream.SendMsg(sr); err != nil {
 					return err
-				}
-				if !retry {
-					break
 				}
 			}
 		}
@@ -687,4 +663,24 @@ func cacheOptKey(opt controlapi.CacheOptionsEntry) (string, error) {
 		return "", err
 	}
 	return fmt.Sprint(opt.Type, ":", hash), nil
+}
+
+type roContentStore struct {
+	content.Store
+}
+
+func (cs *roContentStore) Writer(ctx context.Context, opts ...content.WriterOpt) (content.Writer, error) {
+	return nil, errors.Errorf("read-only content store")
+}
+
+func (cs *roContentStore) Delete(ctx context.Context, dgst digest.Digest) error {
+	return errors.Errorf("read-only content store")
+}
+
+func (cs *roContentStore) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
+	return content.Info{}, errors.Errorf("read-only content store")
+}
+
+func (cs *roContentStore) Abort(ctx context.Context, ref string) error {
+	return errors.Errorf("read-only content store")
 }
