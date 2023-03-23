@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -369,6 +370,13 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 		} else {
 			exp.CacheExportMode = exportMode
 		}
+		if ignoreErrorStr, ok := e.Attrs["ignore-error"]; ok {
+			if ignoreError, supported := parseCacheExportIgnoreError(ignoreErrorStr); !supported {
+				bklog.G(ctx).Debugf("skipping invalid cache export ignore-error: %s", e.Attrs["ignore-error"])
+			} else {
+				exp.IgnoreError = ignoreError
+			}
+		}
 		cacheExporters = append(cacheExporters, exp)
 	}
 
@@ -603,6 +611,14 @@ func parseCacheExportMode(mode string) (solver.CacheExportMode, bool) {
 		return solver.CacheExportModeMax, true
 	}
 	return solver.CacheExportModeMin, false
+}
+
+func parseCacheExportIgnoreError(ignoreErrorStr string) (bool, bool) {
+	ignoreError, err := strconv.ParseBool(ignoreErrorStr)
+	if err != nil {
+		return false, false
+	}
+	return ignoreError, true
 }
 
 func toPBGCPolicy(in []client.PruneInfo) []*apitypes.GCPolicy {
