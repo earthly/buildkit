@@ -60,9 +60,9 @@ require (
 	github.com/pkg/profile v1.5.0
 	github.com/serialx/hashring v0.0.0-20190422032157-8b2912629002
 	github.com/sirupsen/logrus v1.9.0
-	github.com/spdx/tools-golang v0.3.1-0.20221108182156-8a01147e6342
+	github.com/spdx/tools-golang v0.3.1-0.20230104082527-d6f58551be3f
 	github.com/stretchr/testify v1.8.0
-	github.com/tonistiigi/fsutil v0.0.0-20221114235510-0127568185cf
+	github.com/tonistiigi/fsutil v0.0.0-20230105215944-fb433841cbfa
 	github.com/tonistiigi/go-actions-cache v0.0.0-20220404170428-0bdeb6e1eac7
 	github.com/tonistiigi/go-archvariant v1.0.0
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
@@ -158,6 +158,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20230303212804-6a28c867693f
-
-replace github.com/spdx/tools-golang => github.com/jedevc/spdx-tools-golang v0.0.0-20221205121515-6fe9d226281a
+replace github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20230322211606-d14130b24a8e

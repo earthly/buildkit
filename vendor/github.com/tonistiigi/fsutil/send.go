@@ -140,7 +140,7 @@ func (s *sender) sendFile(h *sendHandle) error {
 		buf := bufPool.Get().(*[]byte)
 		defer bufPool.Put(buf)
 		fs := fileSender{sender: s, id: h.id}
-		if _, err := io.CopyBuffer(&fs, f, *buf); err != nil {
+		if _, err := io.CopyBuffer(&fs, struct{ io.Reader }{f}, *buf); err != nil {
 			return err
 		}
 		if s.verboseProgressCb != nil {

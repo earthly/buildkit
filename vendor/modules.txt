@@ -395,7 +395,6 @@ github.com/docker/distribution/manifest/schema2
 github.com/docker/distribution/metrics
 github.com/docker/distribution/notifications
 github.com/docker/distribution/reference
-<<<<<<< HEAD
 github.com/docker/distribution/registry/api/errcode
 github.com/docker/distribution/registry/api/v2
 github.com/docker/distribution/registry/auth
@@ -419,10 +418,7 @@ github.com/docker/distribution/registry/storage/driver/factory
 github.com/docker/distribution/registry/storage/driver/middleware
 github.com/docker/distribution/uuid
 github.com/docker/distribution/version
-# github.com/docker/docker v23.0.0-beta.1+incompatible
-=======
 # github.com/docker/docker v23.0.0-rc.1+incompatible
->>>>>>> 617b78cb69a5d937d4fbe023c269f4d84d80252f
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -721,7 +717,7 @@ github.com/shibumi/go-pathspec
 # github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/spdx/tools-golang v0.3.1-0.20221108182156-8a01147e6342 => github.com/jedevc/spdx-tools-golang v0.0.0-20221205121515-6fe9d226281a
+# github.com/spdx/tools-golang v0.3.1-0.20230104082527-d6f58551be3f
 ## explicit; go 1.13
 github.com/spdx/tools-golang/json
 github.com/spdx/tools-golang/spdx/common
@@ -731,7 +727,7 @@ github.com/spdx/tools-golang/spdx/v2_3
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
-# github.com/tonistiigi/fsutil v0.0.0-20221114235510-0127568185cf => github.com/earthly/fsutil v0.0.0-20230303212804-6a28c867693f
+# github.com/tonistiigi/fsutil v0.0.0-20230105215944-fb433841cbfa => github.com/earthly/fsutil v0.0.0-20230322211606-d14130b24a8e
 ## explicit; go 1.18
 github.com/tonistiigi/fsutil
 github.com/tonistiigi/fsutil/copy
@@ -987,5 +983,4 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20230303212804-6a28c867693f
-# github.com/spdx/tools-golang => github.com/jedevc/spdx-tools-golang v0.0.0-20221205121515-6fe9d226281a
+# github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20230322211606-d14130b24a8e
