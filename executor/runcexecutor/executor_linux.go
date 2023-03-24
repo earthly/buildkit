@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"runtime"
 	"syscall"
 
 	"github.com/containerd/console"
@@ -23,6 +24,8 @@ func updateRuncFieldsForHostOS(runtime *runc.Runc) {
 
 func (w *runcExecutor) run(ctx context.Context, id, bundle string, process executor.ProcessInfo, started func()) error {
 	return w.callWithIO(ctx, id, bundle, process, started, func(ctx context.Context, started chan<- int, io runc.IO) error {
+		runtime.LockOSThread()         // earthly-specific; without this runc processes sometimes exit with -1; the +test target in the root earthly repo reproduces it
+		defer runtime.UnlockOSThread() // earthly-specific
 		_, err := w.runc.Run(ctx, id, bundle, &runc.CreateOpts{
 			NoPivot: w.noPivot,
 			Started: started,
