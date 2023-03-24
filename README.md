@@ -42,7 +42,6 @@ Join `#buildkit` channel on [Docker Community Slack](https://dockr.ly/comm-slack
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-
 - [Used by](#used-by)
 - [Quick start](#quick-start)
   - [Starting the `buildkitd` daemon](#starting-the-buildkitd-daemon)
@@ -72,6 +71,7 @@ Join `#buildkit` channel on [Docker Community Slack](https://dockr.ly/comm-slack
   - [Load balancing](#load-balancing)
 - [Containerizing BuildKit](#containerizing-buildkit)
   - [Podman](#podman)
+  - [Nerdctl](#nerdctl)
   - [Kubernetes](#kubernetes)
   - [Daemonless](#daemonless)
 - [Opentracing support](#opentracing-support)
@@ -536,6 +536,11 @@ There are 2 options supported for Azure Blob Storage authentication:
 * Any system using environment variables supported by the [Azure SDK for Go](https://docs.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication). The configuration must be available for the buildkit daemon, not for the client.
 * Secret Access Key, using the `secret_access_key` attribute to specify the primary or secondary account key for your Azure Blob Storage account. [Azure Blob Storage account keys](https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage)
 
+> **Note**
+>
+> Account name can also be specified with `account_name` attribute (or `$BUILDKIT_AZURE_STORAGE_ACCOUNT_NAME`)
+> if it is not part of the account URL host.
+
 `--export-cache` options:
 * `type=azblob`
 * `mode=<min|max>`: specify cache layers to export (default: `min`)
@@ -668,6 +673,16 @@ To connect to a BuildKit daemon running in a Podman container, use `podman-conta
 ```bash
 podman run -d --name buildkitd --privileged moby/buildkit:latest
 buildctl --addr=podman-container://buildkitd build --frontend dockerfile.v0 --local context=. --local dockerfile=. --output type=oci | podman load foo
+```
+
+`sudo` is not required.
+
+### Nerdctl
+To connect to a BuildKit daemon running in a Nerdctl container, use `nerdctl-container://` instead of `docker-container://`.
+
+```bash
+nerdctl run -d --name buildkitd --privileged moby/buildkit:latest
+buildctl --addr=nerdctl-container://buildkitd build --frontend dockerfile.v0 --local context=. --local dockerfile=. --output type=oci | nerdctl load
 ```
 
 `sudo` is not required.
