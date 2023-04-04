@@ -406,7 +406,7 @@ github.com/davecgh/go-spew/spew
 # github.com/dimchansky/utfbom v1.1.1
 ## explicit
 github.com/dimchansky/utfbom
-# github.com/docker/cli v23.0.0-rc.2+incompatible
+# github.com/docker/cli v23.0.0+incompatible
 ## explicit
 github.com/docker/cli/cli/config
 github.com/docker/cli/cli/config/configfile
@@ -452,7 +452,7 @@ github.com/docker/distribution/registry/storage/driver/factory
 github.com/docker/distribution/registry/storage/driver/middleware
 github.com/docker/distribution/uuid
 github.com/docker/distribution/version
-# github.com/docker/docker v23.0.0-rc.2+incompatible
+# github.com/docker/docker v23.0.0+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -504,7 +504,7 @@ github.com/docker/go-units
 # github.com/docker/libtrust v0.0.0-20150114040149-fa567046d9b1
 ## explicit
 github.com/docker/libtrust
-# github.com/felixge/httpsnoop v1.0.2
+# github.com/felixge/httpsnoop v1.0.3
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
 # github.com/garyburd/redigo v0.0.0-20150301180006-535138d7bcd7
@@ -791,17 +791,17 @@ go.opencensus.io/internal
 go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.36.4
+# go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.37.0
 ## explicit; go 1.18
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal
-# go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.29.0
-## explicit; go 1.16
+# go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.37.0
+## explicit; go 1.18
 go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace
-# go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.29.0
-## explicit; go 1.16
+# go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.37.0
+## explicit; go 1.18
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-# go.opentelemetry.io/otel v1.11.1
+# go.opentelemetry.io/otel v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel
 go.opentelemetry.io/otel/attribute
@@ -816,40 +816,39 @@ go.opentelemetry.io/otel/internal/global
 go.opentelemetry.io/otel/propagation
 go.opentelemetry.io/otel/semconv/internal
 go.opentelemetry.io/otel/semconv/v1.12.0
-go.opentelemetry.io/otel/semconv/v1.7.0
-# go.opentelemetry.io/otel/exporters/jaeger v1.4.1
-## explicit; go 1.16
+# go.opentelemetry.io/otel/exporters/jaeger v1.11.2
+## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/jaeger
 go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/agent
 go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger
 go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore
 go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift
-# go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.1
+# go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/internal/retry
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.1
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.1
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.11.1
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-# go.opentelemetry.io/otel/internal/metric v0.27.0
-## explicit; go 1.16
-go.opentelemetry.io/otel/internal/metric/global
-go.opentelemetry.io/otel/internal/metric/registry
-# go.opentelemetry.io/otel/metric v0.27.0
-## explicit; go 1.16
+# go.opentelemetry.io/otel/metric v0.34.0
+## explicit; go 1.18
 go.opentelemetry.io/otel/metric
 go.opentelemetry.io/otel/metric/global
-go.opentelemetry.io/otel/metric/number
-go.opentelemetry.io/otel/metric/sdkapi
+go.opentelemetry.io/otel/metric/instrument
+go.opentelemetry.io/otel/metric/instrument/asyncfloat64
+go.opentelemetry.io/otel/metric/instrument/asyncint64
+go.opentelemetry.io/otel/metric/instrument/syncfloat64
+go.opentelemetry.io/otel/metric/instrument/syncint64
+go.opentelemetry.io/otel/metric/internal/global
 go.opentelemetry.io/otel/metric/unit
-# go.opentelemetry.io/otel/sdk v1.11.1
+# go.opentelemetry.io/otel/sdk v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/sdk/instrumentation
 go.opentelemetry.io/otel/sdk/internal
@@ -857,7 +856,7 @@ go.opentelemetry.io/otel/sdk/internal/env
 go.opentelemetry.io/otel/sdk/resource
 go.opentelemetry.io/otel/sdk/trace
 go.opentelemetry.io/otel/sdk/trace/tracetest
-# go.opentelemetry.io/otel/trace v1.11.1
+# go.opentelemetry.io/otel/trace v1.11.2
 ## explicit; go 1.18
 go.opentelemetry.io/otel/trace
 # go.opentelemetry.io/proto/otlp v0.19.0
@@ -884,7 +883,7 @@ golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 # golang.org/x/mod v0.6.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.4.0
+# golang.org/x/net v0.5.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
@@ -902,7 +901,7 @@ golang.org/x/net/trace
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.3.0
+# golang.org/x/sys v0.4.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -910,7 +909,7 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/text v0.5.0
+# golang.org/x/text v0.6.0
 ## explicit; go 1.17
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform

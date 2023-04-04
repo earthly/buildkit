@@ -62,6 +62,7 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
+	spdx "github.com/spdx/tools-golang/spdx/v2_3"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/sync/errgroup"
@@ -111,6 +112,8 @@ func TestIntegration(t *testing.T) {
 		testReadonlyRootFS,
 		testBasicRegistryCacheImportExport,
 		testBasicLocalCacheImportExport,
+		testBasicS3CacheImportExport,
+		testBasicAzblobCacheImportExport,
 		testCachedMounts,
 		testCopyFromEmptyImage,
 		testProxyEnv,
@@ -190,6 +193,7 @@ func TestIntegration(t *testing.T) {
 		testAttestationBundle,
 		testSBOMScan,
 		testSBOMScanSingleRef,
+		testSBOMSupplements,
 		testMultipleCacheExports,
 		testMountStubsDirectory,
 		testMountStubsTimestamp,
@@ -310,7 +314,7 @@ func testBridgeNetworking(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBridgeNetworkingDNSNoRootless(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, "hangs: https://github.com/moby/buildkit/issues/3171")
+	integration.CheckFeatureCompat(t, sb, integration.FeatureCNINetwork)
 	if os.Getenv("BUILDKIT_RUN_NETWORK_INTEGRATION_TESTS") == "" {
 		t.SkipNow()
 	}
@@ -1138,9 +1142,9 @@ func testSecretMounts(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	// test optional
+	// test optional, mount should not exist when secret not present in SolveOpt
 	st = llb.Image("busybox:latest").
-		Run(llb.Shlex(`echo secret2`), llb.AddSecret("/run/secrets/mysecret2", llb.SecretOptional))
+		Run(llb.Shlex(`test ! -f /run/secrets/mysecret2`), llb.AddSecret("/run/secrets/mysecret2", llb.SecretOptional))
 
 	def, err = st.Marshal(sb.Context())
 	require.NoError(t, err)
@@ -1174,6 +1178,20 @@ func testSecretMounts(t *testing.T, sb integration.Sandbox) {
 	_, err = c.Solve(sb.Context(), def, SolveOpt{
 		Session: []session.Attachable{secretsprovider.FromMap(map[string][]byte{
 			"mysecret": []byte("pw"),
+		})},
+	}, nil)
+	require.NoError(t, err)
+
+	// test empty cert still creates secret file
+	st = llb.Image("busybox:latest").
+		Run(llb.Shlex(`test -f /run/secrets/mysecret5`), llb.AddSecret("/run/secrets/mysecret5", llb.SecretID("mysecret")))
+
+	def, err = st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		Session: []session.Attachable{secretsprovider.FromMap(map[string][]byte{
+			"mysecret": []byte(""),
 		})},
 	}, nil)
 	require.NoError(t, err)
@@ -4667,6 +4685,77 @@ func testBasicLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
 		Type: "local",
 		Attrs: map[string]string{
 			"dest": dir,
+		},
+	}
+	testBasicCacheImportExport(t, sb, []CacheOptionsEntry{im}, []CacheOptionsEntry{ex})
+}
+
+func testBasicS3CacheImportExport(t *testing.T, sb integration.Sandbox) {
+	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport)
+
+	opts := integration.MinioOpts{
+		Region:          "us-east-1",
+		AccessKeyID:     "minioadmin",
+		SecretAccessKey: "minioadmin",
+	}
+
+	s3Addr, s3Bucket, cleanup, err := integration.NewMinioServer(t, sb, opts)
+	require.NoError(t, err)
+	defer cleanup()
+
+	im := CacheOptionsEntry{
+		Type: "s3",
+		Attrs: map[string]string{
+			"region":            opts.Region,
+			"access_key_id":     opts.AccessKeyID,
+			"secret_access_key": opts.SecretAccessKey,
+			"bucket":            s3Bucket,
+			"endpoint_url":      s3Addr,
+			"use_path_style":    "true",
+		},
+	}
+	ex := CacheOptionsEntry{
+		Type: "s3",
+		Attrs: map[string]string{
+			"region":            opts.Region,
+			"access_key_id":     opts.AccessKeyID,
+			"secret_access_key": opts.SecretAccessKey,
+			"bucket":            s3Bucket,
+			"endpoint_url":      s3Addr,
+			"use_path_style":    "true",
+		},
+	}
+	testBasicCacheImportExport(t, sb, []CacheOptionsEntry{im}, []CacheOptionsEntry{ex})
+}
+
+func testBasicAzblobCacheImportExport(t *testing.T, sb integration.Sandbox) {
+	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport)
+
+	opts := integration.AzuriteOpts{
+		AccountName: "azblobcacheaccount",
+		AccountKey:  base64.StdEncoding.EncodeToString([]byte("azblobcacheaccountkey")),
+	}
+
+	azAddr, cleanup, err := integration.NewAzuriteServer(t, sb, opts)
+	require.NoError(t, err)
+	defer cleanup()
+
+	im := CacheOptionsEntry{
+		Type: "azblob",
+		Attrs: map[string]string{
+			"account_url":       azAddr,
+			"account_name":      opts.AccountName,
+			"secret_access_key": opts.AccountKey,
+			"container":         "cachecontainer",
+		},
+	}
+	ex := CacheOptionsEntry{
+		Type: "azblob",
+		Attrs: map[string]string{
+			"account_url":       azAddr,
+			"account_name":      opts.AccountName,
+			"secret_access_key": opts.AccountKey,
+			"container":         "cachecontainer",
 		},
 	}
 	testBasicCacheImportExport(t, sb, []CacheOptionsEntry{im}, []CacheOptionsEntry{ex})
@@ -8223,6 +8312,154 @@ EOF
 	require.Equal(t, "https://in-toto.io/Statement/v0.1", attest.Type)
 	require.Equal(t, intoto.PredicateSPDX, attest.PredicateType)
 	require.Subset(t, attest.Predicate, map[string]interface{}{"name": "fallback"})
+}
+
+func testSBOMSupplements(t *testing.T, sb integration.Sandbox) {
+	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	requiresLinux(t)
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+
+	registry, err := sb.NewRegistry()
+	if errors.Is(err, integration.ErrRequirements) {
+		t.Skip(err.Error())
+	}
+
+	p := platforms.MustParse("linux/amd64")
+	pk := platforms.Format(p)
+
+	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		res := gateway.NewResult()
+
+		// build image
+		st := llb.Scratch().File(
+			llb.Mkfile("/foo", 0600, []byte{}),
+		)
+		def, err := st.Marshal(ctx)
+		if err != nil {
+			return nil, err
+		}
+		r, err := c.Solve(ctx, gateway.SolveRequest{
+			Definition: def.ToPB(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		ref, err := r.SingleRef()
+		if err != nil {
+			return nil, err
+		}
+		_, err = ref.ToState()
+		if err != nil {
+			return nil, err
+		}
+		res.AddRef(pk, ref)
+
+		expPlatforms := &exptypes.Platforms{
+			Platforms: []exptypes.Platform{{ID: pk, Platform: p}},
+		}
+		dt, err := json.Marshal(expPlatforms)
+		if err != nil {
+			return nil, err
+		}
+		res.AddMeta(exptypes.ExporterPlatformsKey, dt)
+
+		// build attestations
+		doc := spdx.Document{
+			SPDXIdentifier: "DOCUMENT",
+			Files: []*spdx.File{
+				{
+					// foo exists...
+					FileSPDXIdentifier: "SPDXRef-File-foo",
+					FileName:           "/foo",
+				},
+				{
+					// ...but bar doesn't
+					FileSPDXIdentifier: "SPDXRef-File-bar",
+					FileName:           "/bar",
+				},
+			},
+		}
+		docBytes, err := json.Marshal(doc)
+		if err != nil {
+			return nil, err
+		}
+		st = llb.Scratch().
+			File(llb.Mkfile("/result.spdx", 0600, docBytes))
+		def, err = st.Marshal(ctx)
+		if err != nil {
+			return nil, err
+		}
+		r, err = c.Solve(ctx, gateway.SolveRequest{
+			Definition: def.ToPB(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		refAttest, err := r.SingleRef()
+		if err != nil {
+			return nil, err
+		}
+		_, err = ref.ToState()
+		if err != nil {
+			return nil, err
+		}
+
+		res.AddAttestation(pk, gateway.Attestation{
+			Kind: gatewaypb.AttestationKindInToto,
+			Ref:  refAttest,
+			Path: "/result.spdx",
+			InToto: result.InTotoAttestation{
+				PredicateType: intoto.PredicateSPDX,
+			},
+			Metadata: map[string][]byte{
+				result.AttestationSBOMCore: []byte("result"),
+			},
+		})
+
+		return res, nil
+	}
+
+	// test the default fallback scanner
+	target := registry + "/buildkit/testsbom:latest"
+	_, err = c.Build(sb.Context(), SolveOpt{
+		FrontendAttrs: map[string]string{
+			"attest:sbom": "",
+		},
+		Exports: []ExportEntry{
+			{
+				Type: ExporterImage,
+				Attrs: map[string]string{
+					"name": target,
+					"push": "true",
+				},
+			},
+		},
+	}, "", frontend, nil)
+	require.NoError(t, err)
+
+	desc, provider, err := contentutil.ProviderFromRef(target)
+	require.NoError(t, err)
+
+	imgs, err := testutil.ReadImages(sb.Context(), provider, desc)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(imgs.Images))
+
+	att := imgs.Find("unknown/unknown")
+	attest := struct {
+		intoto.StatementHeader
+		Predicate spdx.Document
+	}{}
+	require.NoError(t, json.Unmarshal(att.LayersRaw[0], &attest))
+	require.Equal(t, "https://in-toto.io/Statement/v0.1", attest.Type)
+	require.Equal(t, intoto.PredicateSPDX, attest.PredicateType)
+
+	require.Equal(t, "DOCUMENT", string(attest.Predicate.SPDXIdentifier))
+	require.Len(t, attest.Predicate.Files, 2)
+	require.Equal(t, attest.Predicate.Files[0].FileName, "/foo")
+	require.Regexp(t, "^layerID: sha256:", attest.Predicate.Files[0].FileComment)
+	require.Equal(t, attest.Predicate.Files[1].FileName, "/bar")
+	require.Empty(t, attest.Predicate.Files[1].FileComment)
 }
 
 func testMultipleCacheExports(t *testing.T, sb integration.Sandbox) {
