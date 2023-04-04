@@ -84,13 +84,12 @@ func (e *imageExporter) Resolve(ctx context.Context, opt map[string]string) (exp
 			RefCfg: cacheconfig.RefConfig{
 				Compression: compression.New(compression.Default),
 			},
-			BuildInfo:   true,
 			Annotations: make(containerimage.AnnotationsGroup),
 		},
 		store: true,
 	}
 
-	opt, err := i.opts.Load(opt)
+	opt, err := i.opts.Load(ctx, opt)
 	if err != nil {
 		return nil, err
 	}

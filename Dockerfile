@@ -1,20 +1,22 @@
 # syntax=docker/dockerfile-upstream:master
 
-ARG RUNC_VERSION=v1.1.4
-ARG CONTAINERD_VERSION=v1.7.0-beta.3
+ARG RUNC_VERSION=v1.1.5
+ARG CONTAINERD_VERSION=v1.7.0
 # containerd v1.6 for integration tests
-ARG CONTAINERD_ALT_VERSION_16=v1.6.16
+ARG CONTAINERD_ALT_VERSION_16=v1.6.19
 ARG REGISTRY_VERSION=2.8.0
 ARG ROOTLESSKIT_VERSION=v1.0.1
 ARG CNI_VERSION=v1.2.0
-ARG STARGZ_SNAPSHOTTER_VERSION=v0.13.0
+ARG STARGZ_SNAPSHOTTER_VERSION=v0.14.1
 ARG NERDCTL_VERSION=v1.0.0
 ARG DNSNAME_VERSION=v1.3.1
 ARG NYDUS_VERSION=v2.1.0
 ARG MINIO_VERSION=RELEASE.2022-05-03T20-36-08Z
 ARG MINIO_MC_VERSION=RELEASE.2022-05-04T06-07-55Z
 ARG AZURITE_VERSION=3.18.0
+ARG GOTESTSUM_VERSION=v1.9.0
 
+ARG GO_VERSION=1.20
 ARG ALPINE_VERSION=3.17
 
 # minio for s3 integration tests
@@ -32,10 +34,10 @@ FROM alpine:edge@sha256:c223f84e05c23c0571ce8decefef818864869187e1a3ea47719412e2
 FROM alpine-$TARGETARCH AS alpinebase
 
 # xx is a helper for cross-compilation
-FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.1.2 AS xx
+FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.2.1 AS xx
 
 # go base image
-FROM --platform=$BUILDPLATFORM golang:1.19-alpine${ALPINE_VERSION} AS golatest
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS golatest
 
 # git stage is used for checking out remote repository sources
 FROM --platform=$BUILDPLATFORM alpine:${ALPINE_VERSION} AS git
@@ -108,12 +110,10 @@ RUN --mount=target=. --mount=target=/root/.cache,type=cache \
   CGO_ENABLED=0 xx-go build -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
   xx-verify --static /usr/bin/buildkitd
 
-FROM scratch AS binaries-linux-helper
+FROM scratch AS binaries-linux
 COPY --link --from=runc /usr/bin/runc /buildkit-runc
 # built from https://github.com/tonistiigi/binfmt/releases/tag/buildkit%2Fv7.1.0-30
 COPY --link --from=tonistiigi/binfmt:buildkit-v7.1.0-30@sha256:45dd57b4ba2f24e2354f71f1e4e51f073cb7a28fd848ce6f5f2a7701142a6bf0 / /
-
-FROM binaries-linux-helper AS binaries-linux
 COPY --link --from=buildctl /usr/bin/buildctl /
 COPY --link --from=buildkitd /usr/bin/buildkitd /
 
@@ -209,6 +209,12 @@ SHELL ["/bin/bash", "-c"]
 RUN wget https://github.com/dragonflyoss/image-service/releases/download/$NYDUS_VERSION/nydus-static-$NYDUS_VERSION-$TARGETOS-$TARGETARCH.tgz
 RUN mkdir -p /out/nydus-static && tar xzvf nydus-static-$NYDUS_VERSION-$TARGETOS-$TARGETARCH.tgz -C /out
 
+FROM gobuild-base AS gotestsum
+ARG GOTESTSUM_VERSION
+RUN --mount=target=/root/.cache,type=cache \
+  GOBIN=/out/ go install "gotest.tools/gotestsum@${GOTESTSUM_VERSION}" && \
+  /out/gotestsum --version
+
 FROM buildkit-export AS buildkit-linux
 COPY --link --from=binaries / /usr/bin/
 ENTRYPOINT ["buildkitd"]
@@ -251,6 +257,8 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 ENV BUILDKIT_INTEGRATION_CONTAINERD_EXTRA="containerd-1.6=/opt/containerd-alt-16/bin"
 ENV BUILDKIT_INTEGRATION_SNAPSHOTTER=stargz
 ENV CGO_ENABLED=0
+ENV GOTESTSUM_FORMAT=standard-verbose
+COPY --link --from=gotestsum /out/gotestsum /usr/bin/
 COPY --link --from=minio /opt/bin/minio /usr/bin/
 COPY --link --from=minio-mc /usr/bin/mc /usr/bin/
 COPY --link --from=nydus /out/nydus-static/* /usr/bin/

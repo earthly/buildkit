@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	v1 "github.com/moby/buildkit/cache/remotecache/v1"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/solver"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/compression"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/moby/buildkit/util/tracing"
@@ -21,13 +23,12 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	actionscache "github.com/tonistiigi/go-actions-cache"
 	"golang.org/x/sync/errgroup"
 )
 
 func init() {
-	actionscache.Log = logrus.Debugf
+	actionscache.Log = bklog.L.Debugf
 }
 
 const (
@@ -369,6 +370,13 @@ func (p *ciProvider) ReaderAt(ctx context.Context, desc ocispecs.Descriptor) (co
 type readerAt struct {
 	actionscache.ReaderAtCloser
 	desc ocispecs.Descriptor
+}
+
+func (r *readerAt) ReadAt(p []byte, off int64) (int, error) {
+	if off >= r.desc.Size {
+		return 0, io.EOF
+	}
+	return r.ReaderAtCloser.ReadAt(p, off)
 }
 
 func (r *readerAt) Size() int64 {

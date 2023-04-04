@@ -12,7 +12,6 @@ run:
 
 linters:
   enable:
-    - deadcode
     - depguard
     - gofmt
     - goimports
@@ -25,7 +24,6 @@ linters:
     - staticcheck
     - typecheck
     - unused
-    - varcheck
     - bodyclose
     - errname
     - makezero
@@ -46,6 +44,7 @@ linters-settings:
   forbidigo:
     forbid:
       - '^fmt\.Errorf(# use errors\.Errorf instead)?$'
+      - 'logrus\.(Trace|Debug|Info|Warn|Warning|Error|Fatal)(f|ln)?\((# use bklog\.G\(ctx\) instead of logrus directly)?'
   importas:
     alias:
       - pkg: "github.com/opencontainers/image-spec/specs-go/v1"

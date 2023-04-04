@@ -53,7 +53,7 @@ type Opt struct {
 	SessionManager            *session.Manager
 	WorkerController          *worker.Controller
 	Frontends                 map[string]frontend.Frontend
-	CacheKeyStorage           solver.CacheKeyStorage
+	CacheManager              solver.CacheManager
 	ResolveCacheExporterFuncs map[string]remotecache.ResolveCacheExporterFunc
 	ResolveCacheImporterFuncs map[string]remotecache.ResolveCacheImporterFunc
 	Entitlements              []string
@@ -78,8 +78,6 @@ type Controller struct { // TODO: ControlService
 }
 
 func NewController(opt Opt) (*Controller, error) {
-	cache := solver.NewCacheManager(context.TODO(), "local", opt.CacheKeyStorage, worker.NewCacheResultStorage(opt.WorkerController))
-
 	gatewayForwarder := controlgateway.NewGatewayForwarder()
 
 	hq := llbsolver.NewHistoryQueue(llbsolver.HistoryQueueOpt{
@@ -92,7 +90,7 @@ func NewController(opt Opt) (*Controller, error) {
 	s, err := llbsolver.New(llbsolver.Opt{
 		WorkerController: opt.WorkerController,
 		Frontends:        opt.Frontends,
-		CacheManager:     cache,
+		CacheManager:     opt.CacheManager,
 		CacheResolvers:   opt.ResolveCacheImporterFuncs,
 		GatewayForwarder: gatewayForwarder,
 		SessionManager:   opt.SessionManager,
@@ -107,7 +105,7 @@ func NewController(opt Opt) (*Controller, error) {
 		opt:              opt,
 		solver:           s,
 		history:          hq,
-		cache:            cache,
+		cache:            opt.CacheManager,
 		gatewayForwarder: gatewayForwarder,
 	}
 	c.throttledGC = throttle.After(time.Minute, c.gc)
@@ -183,9 +181,9 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 	defer func() {
 		if didPrune {
 			if c, ok := c.cache.(interface {
-				ReleaseUnreferenced() error
+				ReleaseUnreferenced(context.Context) error
 			}); ok {
-				if err := c.ReleaseUnreferenced(); err != nil {
+				if err := c.ReleaseUnreferenced(ctx); err != nil {
 					bklog.G(ctx).Errorf("failed to release cache metadata: %+v", err)
 				}
 			}
@@ -277,7 +275,7 @@ func (c *Controller) UpdateBuildHistory(ctx context.Context, req *controlapi.Upd
 	return &controlapi.UpdateBuildHistoryResponse{}, err
 }
 
-func translateLegacySolveRequest(req *controlapi.SolveRequest) error {
+func translateLegacySolveRequest(req *controlapi.SolveRequest) {
 	// translates ExportRef and ExportAttrs to new Exports (v0.4.0)
 	if legacyExportRef := req.Cache.ExportRefDeprecated; legacyExportRef != "" {
 		ex := &controlapi.CacheOptionsEntry{
@@ -303,18 +301,13 @@ func translateLegacySolveRequest(req *controlapi.SolveRequest) error {
 		req.Cache.Imports = append(req.Cache.Imports, im)
 	}
 	req.Cache.ImportRefsDeprecated = nil
-	return nil
 }
 
 func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*controlapi.SolveResponse, error) {
 	atomic.AddInt64(&c.buildCount, 1)
 	defer atomic.AddInt64(&c.buildCount, -1)
 
-	// This method registers job ID in solver.Solve. Make sure there are no blocking calls before that might delay this.
-
-	if err := translateLegacySolveRequest(req); err != nil {
-		return nil, err
-	}
+	translateLegacySolveRequest(req)
 
 	defer func() {
 		time.AfterFunc(time.Second, c.throttledGC)
@@ -368,6 +361,10 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 		exp.Exporter, err = cacheExporterFunc(ctx, session.NewGroup(req.Session), e.Attrs)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to configure %v cache exporter", e.Type)
+		}
+		if exp.Exporter == nil {
+			bklog.G(ctx).Debugf("cache exporter resolver for %v returned nil, skipping exporter", e.Type)
+			continue
 		}
 		if exportMode, supported := parseCacheExportMode(e.Attrs["mode"]); !supported {
 			bklog.G(ctx).Debugf("skipping invalid cache export mode: %s", e.Attrs["mode"])

@@ -964,9 +964,11 @@ the most-recently-applied value overrides any previously-set value.
 To view an image's labels, use the `docker image inspect` command. You can use
 the `--format` option to show just the labels;
  
+{% raw %}
 ```console
 $ docker image inspect --format='{{json .Config.Labels}}' myimage
 ```
+{% endraw %}
 
 ```json
 {
@@ -1127,19 +1129,25 @@ RUN apt-get update && apt-get install -y ...
 ADD has two forms:
 
 ```dockerfile
-ADD [--chown=<user>:<group>] [--checksum=<checksum>] <src>... <dest>
-ADD [--chown=<user>:<group>] ["<src>",... "<dest>"]
+ADD [--chown=<user>:<group>] [--chmod=<perms>] [--checksum=<checksum>] <src>... <dest>
+ADD [--chown=<user>:<group>] [--chmod=<perms>] ["<src>",... "<dest>"]
 ```
 
 The latter form is required for paths containing whitespace.
 
 > **Note**
 >
-> The `--chown` feature is only supported on Dockerfiles used to build Linux containers,
+> The `--chown` and `--chmod` features are only supported on Dockerfiles used to build Linux containers,
 > and will not work on Windows containers. Since user and group ownership concepts do
 > not translate between Linux and Windows, the use of `/etc/passwd` and `/etc/group` for
 > translating user and group names to IDs restricts this feature to only be viable
 > for Linux OS-based containers.
+
+> **Note**
+>
+> `--chmod` is supported since [Dockerfile 1.3](https://docs.docker.com/build/buildkit/dockerfile-frontend/).
+> Only octal notation is currently supported. Non-octal support is tracked in
+> [moby/buildkit#1951](https://github.com/moby/buildkit/issues/1951).
 
 The `ADD` instruction copies new files, directories or remote file URLs from `<src>`
 and adds them to the filesystem of the image at the path `<dest>`.
@@ -1204,6 +1212,7 @@ ADD --chown=55:mygroup files* /somedir/
 ADD --chown=bin files* /somedir/
 ADD --chown=1 files* /somedir/
 ADD --chown=10:11 files* /somedir/
+ADD --chown=myuser:mygroup --chmod=655 files* /somedir/
 ```
 
 If the container root filesystem does not contain either `/etc/passwd` or
@@ -1359,15 +1368,15 @@ See [`COPY --link`](#copy---link).
 COPY has two forms:
 
 ```dockerfile
-COPY [--chown=<user>:<group>] <src>... <dest>
-COPY [--chown=<user>:<group>] ["<src>",... "<dest>"]
+COPY [--chown=<user>:<group>] [--chmod=<perms>] <src>... <dest>
+COPY [--chown=<user>:<group>] [--chmod=<perms>] ["<src>",... "<dest>"]
 ```
 
 This latter form is required for paths containing whitespace
 
 > **Note**
 >
-> The `--chown` feature is only supported on Dockerfiles used to build Linux containers,
+> The `--chown` and `--chmod` features are only supported on Dockerfiles used to build Linux containers,
 > and will not work on Windows containers. Since user and group ownership concepts do
 > not translate between Linux and Windows, the use of `/etc/passwd` and `/etc/group` for
 > translating user and group names to IDs restricts this feature to only be viable for
@@ -1435,6 +1444,7 @@ COPY --chown=55:mygroup files* /somedir/
 COPY --chown=bin files* /somedir/
 COPY --chown=1 files* /somedir/
 COPY --chown=10:11 files* /somedir/
+COPY --chown=myuser:mygroup --chmod=644 files* /somedir/
 ```
 
 If the container root filesystem does not contain either `/etc/passwd` or
@@ -2217,7 +2227,6 @@ RUN echo "I'm building for $TARGETPLATFORM"
 |---------------------------------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `BUILDKIT_CACHE_MOUNT_NS`             | String | Set optional cache ID namespace.                                                                                                                                                                               |
 | `BUILDKIT_CONTEXT_KEEP_GIT_DIR`       | Bool   | Trigger git context to keep the `.git` directory.                                                                                                                                                              |
-| `BUILDKIT_INLINE_BUILDINFO_ATTRS`[^2] | Bool   | Inline build info attributes in image config or not.                                                                                                                                                           |
 | `BUILDKIT_INLINE_CACHE`[^2]           | Bool   | Inline cache metadata to image config or not.                                                                                                                                                                  |
 | `BUILDKIT_MULTI_PLATFORM`             | Bool   | Opt into determnistic output regardless of multi-platform output or not.                                                                                                                                       |
 | `BUILDKIT_SANDBOX_HOSTNAME`           | String | Set the hostname (default `buildkitsandbox`)                                                                                                                                                                   |

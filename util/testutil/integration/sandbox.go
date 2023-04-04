@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/shlex"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 const buildkitdConfigFile = "buildkitd.toml"
@@ -46,6 +46,20 @@ func (b backend) Snapshotter() string {
 }
 
 func (b backend) isUnsupportedFeature(feature string) bool {
+	if enabledFeatures := os.Getenv("BUILDKIT_TEST_ENABLE_FEATURES"); enabledFeatures != "" {
+		for _, enabledFeature := range strings.Split(enabledFeatures, ",") {
+			if feature == enabledFeature {
+				return false
+			}
+		}
+	}
+	if disabledFeatures := os.Getenv("BUILDKIT_TEST_DISABLE_FEATURES"); disabledFeatures != "" {
+		for _, disabledFeature := range strings.Split(disabledFeatures, ",") {
+			if feature == disabledFeature {
+				return true
+			}
+		}
+	}
 	for _, unsupportedFeature := range b.unsupportedFeatures {
 		if feature == unsupportedFeature {
 			return true
@@ -253,7 +267,7 @@ func rootlessSupported(uid int) bool {
 	cmd := exec.Command("sudo", "-u", fmt.Sprintf("#%d", uid), "-i", "--", "exec", "unshare", "-U", "true") //nolint:gosec // test utility
 	b, err := cmd.CombinedOutput()
 	if err != nil {
-		logrus.Warnf("rootless mode is not supported on this host: %v (%s)", err, string(b))
+		bklog.L.Warnf("rootless mode is not supported on this host: %v (%s)", err, string(b))
 		return false
 	}
 	return true
@@ -270,41 +284,55 @@ func printLogs(logs map[string]*bytes.Buffer, f func(args ...interface{})) {
 }
 
 const (
-	FeatureCacheExport      = "cache export"
-	FeatureCacheImport      = "cache import"
-	FeatureDirectPush       = "direct push"
-	FeatureFrontendOutline  = "frontend outline"
-	FeatureFrontendTargets  = "frontend targets"
-	FeatureImageExporter    = "image exporter"
-	FeatureInfo             = "info"
-	FeatureMultiCacheExport = "multi cache export"
-	FeatureMultiPlatform    = "multi-platform"
-	FeatureOCIExporter      = "oci exporter"
-	FeatureOCILayout        = "oci layout"
-	FeatureProvenance       = "provenance"
-	FeatureSBOM             = "sbom"
-	FeatureSecurityMode     = "security mode"
-	FeatureSourceDateEpoch  = "source date epoch"
-	FeatureCNINetwork       = "cni network"
+	FeatureCacheExport          = "cache_export"
+	FeatureCacheImport          = "cache_import"
+	FeatureCacheBackendAzblob   = "cache_backend_azblob"
+	FeatureCacheBackendGha      = "cache_backend_gha"
+	FeatureCacheBackendInline   = "cache_backend_inline"
+	FeatureCacheBackendLocal    = "cache_backend_local"
+	FeatureCacheBackendRegistry = "cache_backend_registry"
+	FeatureCacheBackendS3       = "cache_backend_s3"
+	FeatureDirectPush           = "direct_push"
+	FeatureFrontendOutline      = "frontend_outline"
+	FeatureFrontendTargets      = "frontend_targets"
+	FeatureImageExporter        = "image_exporter"
+	FeatureInfo                 = "info"
+	FeatureMergeDiff            = "merge_diff"
+	FeatureMultiCacheExport     = "multi_cache_export"
+	FeatureMultiPlatform        = "multi_platform"
+	FeatureOCIExporter          = "oci_exporter"
+	FeatureOCILayout            = "oci_layout"
+	FeatureProvenance           = "provenance"
+	FeatureSBOM                 = "sbom"
+	FeatureSecurityMode         = "security_mode"
+	FeatureSourceDateEpoch      = "source_date_epoch"
+	FeatureCNINetwork           = "cni_network"
 )
 
 var features = map[string]struct{}{
-	FeatureCacheExport:      {},
-	FeatureCacheImport:      {},
-	FeatureDirectPush:       {},
-	FeatureFrontendOutline:  {},
-	FeatureFrontendTargets:  {},
-	FeatureImageExporter:    {},
-	FeatureInfo:             {},
-	FeatureMultiCacheExport: {},
-	FeatureMultiPlatform:    {},
-	FeatureOCIExporter:      {},
-	FeatureOCILayout:        {},
-	FeatureProvenance:       {},
-	FeatureSBOM:             {},
-	FeatureSecurityMode:     {},
-	FeatureSourceDateEpoch:  {},
-	FeatureCNINetwork:       {},
+	FeatureCacheExport:          {},
+	FeatureCacheImport:          {},
+	FeatureCacheBackendAzblob:   {},
+	FeatureCacheBackendGha:      {},
+	FeatureCacheBackendInline:   {},
+	FeatureCacheBackendLocal:    {},
+	FeatureCacheBackendRegistry: {},
+	FeatureCacheBackendS3:       {},
+	FeatureDirectPush:           {},
+	FeatureFrontendOutline:      {},
+	FeatureFrontendTargets:      {},
+	FeatureImageExporter:        {},
+	FeatureInfo:                 {},
+	FeatureMergeDiff:            {},
+	FeatureMultiCacheExport:     {},
+	FeatureMultiPlatform:        {},
+	FeatureOCIExporter:          {},
+	FeatureOCILayout:            {},
+	FeatureProvenance:           {},
+	FeatureSBOM:                 {},
+	FeatureSecurityMode:         {},
+	FeatureSourceDateEpoch:      {},
+	FeatureCNINetwork:           {},
 }
 
 func CheckFeatureCompat(t *testing.T, sb Sandbox, reason ...string) {

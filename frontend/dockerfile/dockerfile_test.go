@@ -71,6 +71,7 @@ var allTests = integration.TestFuncs(
 	testExportedHistory,
 	testExposeExpansion,
 	testUser,
+	testUserAdditionalGids,
 	testCacheReleased,
 	testDockerignore,
 	testDockerignoreInvalid,
@@ -160,6 +161,7 @@ var allTests = integration.TestFuncs(
 	testNilProvenance,
 	testSBOMScannerArgs,
 	testMultiPlatformWarnings,
+	testNilContextInSolveGateway,
 )
 
 // Tests that depend on the `security.*` entitlements
@@ -228,7 +230,10 @@ func TestIntegration(t *testing.T) {
 
 	integration.Run(t, reproTests, append(opts,
 		// Only use the amd64 digest,  regardless to the host platform
-		integration.WithMirroredImages(integration.OfficialImages("debian:bullseye-20230109-slim@sha256:1acb06a0c31fb467eb8327ad361f1091ab265e0bf26d452dea45dcb0c0ea5e75")))...)
+		integration.WithMirroredImages(map[string]string{
+			"amd64/bullseye-20230109-slim": "docker.io/amd64/debian:bullseye-20230109-slim@sha256:1acb06a0c31fb467eb8327ad361f1091ab265e0bf26d452dea45dcb0c0ea5e75",
+		}),
+	)...)
 }
 
 func testDefaultEnvWithArgs(t *testing.T, sb integration.Sandbox) {
@@ -418,7 +423,7 @@ RUN [ "$(cat testfile)" == "contents0" ]
 }
 
 func testExportCacheLoop(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport)
+	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheImport, integration.FeatureCacheBackendLocal)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -3004,6 +3009,43 @@ USER nobody
 	require.Equal(t, "nobody", ociimg.Config.User)
 }
 
+// testUserAdditionalGids ensures that that the primary GID is also included in the additional GID list.
+// CVE-2023-25173: https://github.com/advisories/GHSA-hmfx-3pcx-653p
+func testUserAdditionalGids(t *testing.T, sb integration.Sandbox) {
+	f := getFrontend(t, sb)
+
+	dockerfile := []byte(`
+# Mimics the tests in https://github.com/containerd/containerd/commit/3eda46af12b1deedab3d0802adb2e81cb3521950
+FROM busybox
+SHELL ["/bin/sh", "-euxc"]
+RUN [ "$(id)" = "uid=0(root) gid=0(root) groups=0(root),10(wheel)" ]
+USER 1234
+RUN [ "$(id)" = "uid=1234 gid=0(root) groups=0(root)" ]
+USER 1234:1234
+RUN [ "$(id)" = "uid=1234 gid=1234 groups=1234" ]
+USER daemon
+RUN [ "$(id)" = "uid=1(daemon) gid=1(daemon) groups=1(daemon)" ]
+`)
+
+	dir, err := integration.Tmpdir(
+		t,
+		fstest.CreateFile("Dockerfile", dockerfile, 0600),
+	)
+	require.NoError(t, err)
+
+	c, err := client.New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
+		LocalDirs: map[string]string{
+			dockerui.DefaultLocalNameDockerfile: dir,
+			dockerui.DefaultLocalNameContext:    dir,
+		},
+	}, nil)
+	require.NoError(t, err)
+}
+
 func testCopyChown(t *testing.T, sb integration.Sandbox) {
 	f := getFrontend(t, sb)
 
@@ -3910,7 +3952,12 @@ ONBUILD RUN mkdir -p /out && echo -n 11 >> /out/foo
 }
 
 func testCacheMultiPlatformImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	integration.CheckFeatureCompat(t, sb,
+		integration.FeatureDirectPush,
+		integration.FeatureCacheExport,
+		integration.FeatureCacheBackendInline,
+		integration.FeatureCacheBackendRegistry,
+	)
 	f := getFrontend(t, sb)
 
 	registry, err := sb.NewRegistry()
@@ -4033,7 +4080,7 @@ COPY --from=base arch /
 }
 
 func testCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport)
+	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheBackendLocal)
 	f := getFrontend(t, sb)
 
 	registry, err := sb.NewRegistry()
@@ -6487,17 +6534,13 @@ func testReproSourceDateEpoch(t *testing.T, sb integration.Sandbox) {
 	if sb.Snapshotter() == "native" {
 		t.Skip("the digest is not reproducible with the \"native\" snapshotter because hardlinks are processed in a different way: https://github.com/moby/buildkit/pull/3456#discussion_r1062650263")
 	}
-	if runtime.GOARCH != "amd64" {
-		t.Skip("FIXME: the image cannot be pulled on non-amd64 (`docker.io/arm64v8/debian:bullseye-20230109-slim@...: not found`): https://github.com/moby/buildkit/pull/3456#discussion_r1068989918")
-	}
-
 	f := getFrontend(t, sb)
 
 	tm := time.Date(2023, time.January, 10, 12, 34, 56, 0, time.UTC)
 	t.Logf("SOURCE_DATE_EPOCH=%d", tm.Unix())
 
 	dockerfile := []byte(`# The base image cannot be busybox, due to https://github.com/moby/buildkit/issues/3455
-FROM --platform=linux/amd64 debian:bullseye-20230109-slim@sha256:1acb06a0c31fb467eb8327ad361f1091ab265e0bf26d452dea45dcb0c0ea5e75
+FROM amd64/debian:bullseye-20230109-slim
 RUN touch /foo
 RUN touch /foo.1
 RUN touch -d '2010-01-01 12:34:56' /foo-2010
@@ -6519,7 +6562,7 @@ FROM scratch
 COPY --from=0 / /
 `)
 
-	const expectedDigest = "sha256:23bfe9c494f4b4ae9368d989035c70b3a34aa0bfc991618b3e54dcce2eee4bf8"
+	const expectedDigest = "sha256:14b7856c37777ad7e8f4a801cb98abec98c5ae0f4a8dbb152447d18f1c1a3ba9"
 
 	dir, err := integration.Tmpdir(
 		t,
@@ -6546,11 +6589,7 @@ COPY --from=0 / /
 		},
 		Exports: []client.ExportEntry{
 			{
-				Type: client.ExporterOCI,
-				Attrs: map[string]string{
-					// Remove buildinfo, as it contains the digest of the frontend image
-					"buildinfo": "false",
-				},
+				Type:   client.ExporterOCI,
 				Output: fixedWriteCloser(outW),
 			},
 		},
@@ -6561,6 +6600,29 @@ COPY --from=0 / /
 	t.Logf("OCI archive digest=%q", outDigest)
 	t.Log("The digest may change depending on the BuildKit version, the snapshotter configuration, etc.")
 	require.Equal(t, expectedDigest, outDigest)
+}
+
+func testNilContextInSolveGateway(t *testing.T, sb integration.Sandbox) {
+	f := getFrontend(t, sb)
+	c, err := client.New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	_, err = c.Build(sb.Context(), client.SolveOpt{}, "", func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		res, err := f.SolveGateway(ctx, c, gateway.SolveRequest{
+			Frontend: "dockerfile.v0",
+			FrontendInputs: map[string]*pb.Definition{
+				dockerui.DefaultLocalNameContext:    nil,
+				dockerui.DefaultLocalNameDockerfile: nil,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}, nil)
+	// should not cause buildkitd to panic
+	require.ErrorContains(t, err, "invalid nil input definition to definition op")
 }
 
 func runShell(dir string, cmds ...string) error {

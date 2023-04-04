@@ -2,7 +2,6 @@ package llbsolver
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,7 +27,7 @@ import (
 	"github.com/moby/buildkit/solver/result"
 	spb "github.com/moby/buildkit/sourcepolicy/pb"
 	"github.com/moby/buildkit/util/attestation"
-	"github.com/moby/buildkit/util/buildinfo"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/compression"
 	"github.com/moby/buildkit/util/entitlements"
 	"github.com/moby/buildkit/util/grpcerrors"
@@ -37,7 +36,6 @@ import (
 	"github.com/moby/buildkit/worker"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -335,7 +333,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 		}()
 
 		if err != nil {
-			st, ok := grpcerrors.AsGRPCStatus(grpcerrors.ToGRPC(err))
+			st, ok := grpcerrors.AsGRPCStatus(grpcerrors.ToGRPC(ctx, err))
 			if !ok {
 				st = status.New(codes.Unknown, err.Error())
 			}
@@ -351,7 +349,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 		}
 
 		if stopTrace == nil {
-			logrus.Warn("no trace recorder found, skipping")
+			bklog.G(ctx).Warn("no trace recorder found, skipping")
 			return err
 		}
 		go func() {
@@ -393,7 +391,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 				}
 				return nil
 			}(); err != nil {
-				logrus.Errorf("failed to save trace for %s: %+v", id, err)
+				bklog.G(ctx).Errorf("failed to save trace for %s: %+v", id, err)
 			}
 		}()
 
@@ -425,15 +423,6 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 
 	if internal {
 		defer j.CloseProgress()
-	} else {
-		rec, err1 := s.recordBuildHistory(ctx, id, req, exp, j)
-		if err != nil {
-			defer j.CloseProgress()
-			return nil, err1
-		}
-		defer func() {
-			err = rec(resProv, descref, err)
-		}()
 	}
 
 	set, err := entitlements.WhiteList(ent, supportedEntitlements(s.entitlements))
@@ -450,14 +439,32 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	j.SessionID = sessionID
 
 	br := s.bridge(j)
+	var fwd gateway.LLBBridgeForwarder
 	if s.gatewayForwarder != nil && req.Definition == nil && req.Frontend == "" {
-		fwd := gateway.NewBridgeForwarder(ctx, br, s.workerController, req.FrontendInputs, sessionID, s.sm)
+		fwd = gateway.NewBridgeForwarder(ctx, br, s.workerController, req.FrontendInputs, sessionID, s.sm)
 		defer fwd.Discard()
+		// Register build before calling s.recordBuildHistory, because
+		// s.recordBuildHistory can block for several seconds on
+		// LeaseManager calls, and there is a fixed 3s timeout in
+		// GatewayForwarder on build registration.
 		if err := s.gatewayForwarder.RegisterBuild(ctx, id, fwd); err != nil {
 			return nil, err
 		}
 		defer s.gatewayForwarder.UnregisterBuild(ctx, id)
+	}
 
+	if !internal {
+		rec, err1 := s.recordBuildHistory(ctx, id, req, exp, j)
+		if err1 != nil {
+			defer j.CloseProgress()
+			return nil, err1
+		}
+		defer func() {
+			err = rec(resProv, descref, err)
+		}()
+	}
+
+	if fwd != nil {
 		var err error
 		select {
 		case <-fwd.Done():
@@ -561,9 +568,6 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	for k, v := range res.Metadata {
 		if strings.HasPrefix(k, "frontend.") {
 			exporterResponse[k] = string(v)
-		}
-		if strings.HasPrefix(k, exptypes.ExporterBuildInfo) {
-			exporterResponse[k] = base64.StdEncoding.EncodeToString(v)
 		}
 	}
 	for k, v := range cacheExporterResponse {
@@ -694,9 +698,6 @@ func addProvenanceToResult(res *frontend.Result, br *provenanceBridge) (*Result,
 		if res.Metadata == nil {
 			res.Metadata = map[string][]byte{}
 		}
-		if err := buildinfo.AddMetadata(res.Metadata, exptypes.ExporterBuildInfo, cp); err != nil {
-			return nil, err
-		}
 	}
 
 	if len(res.Refs) != 0 {
@@ -710,9 +711,6 @@ func addProvenanceToResult(res *frontend.Result, br *provenanceBridge) (*Result,
 		out.Provenance.Refs[k] = cp
 		if res.Metadata == nil {
 			res.Metadata = map[string][]byte{}
-		}
-		if err := buildinfo.AddMetadata(res.Metadata, fmt.Sprintf("%s/%s", exptypes.ExporterBuildInfo, k), cp); err != nil {
-			return nil, err
 		}
 	}
 
@@ -886,6 +884,7 @@ func defaultResolver(wc *worker.Controller) ResolveWorkerFunc {
 		return wc.GetDefault()
 	}
 }
+
 func allWorkers(wc *worker.Controller) func(func(w worker.Worker) error) error {
 	return func(f func(worker.Worker) error) error {
 		all, err := wc.List()

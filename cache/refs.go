@@ -14,6 +14,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/pkg/userns"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/hashicorp/go-multierror"
@@ -27,12 +28,12 @@ import (
 	"github.com/moby/buildkit/util/flightcontrol"
 	"github.com/moby/buildkit/util/leaseutil"
 	"github.com/moby/buildkit/util/progress"
+	rootlessmountopts "github.com/moby/buildkit/util/rootless/mountopts"
 	"github.com/moby/buildkit/util/winlayers"
 	"github.com/moby/sys/mountinfo"
 	digest "github.com/opencontainers/go-digest"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -991,7 +992,7 @@ func (sr *immutableRef) withRemoteSnapshotLabelsStargzMode(ctx context.Context, 
 				info.Labels[k] = "" // Remove labels appended in this call
 			}
 			if _, err := r.cm.Snapshotter.Update(ctx, info, flds...); err != nil {
-				logrus.Warn(errors.Wrapf(err, "failed to remove tmp remote labels"))
+				bklog.G(ctx).Warn(errors.Wrapf(err, "failed to remove tmp remote labels"))
 			}
 		}()
 
@@ -1053,7 +1054,7 @@ func (sr *immutableRef) prepareRemoteSnapshotsStargzMode(ctx context.Context, s 
 								info.Labels[k] = ""
 							}
 							if _, err := r.cm.Snapshotter.Update(ctx, info, tmpFields...); err != nil {
-								logrus.Warn(errors.Wrapf(err,
+								bklog.G(ctx).Warn(errors.Wrapf(err,
 									"failed to remove tmp remote labels after prepare"))
 							}
 						}()
@@ -1361,7 +1362,7 @@ func (cr *cacheRecord) finalize(ctx context.Context) error {
 		cr.cm.mu.Lock()
 		defer cr.cm.mu.Unlock()
 		if err := mutable.remove(context.TODO(), true); err != nil {
-			logrus.Error(err)
+			bklog.G(ctx).Error(err)
 		}
 	}()
 
@@ -1640,6 +1641,12 @@ func (sm *sharableMountable) Mount() (_ []mount.Mount, _ func() error, retErr er
 				os.Remove(dir)
 			}
 		}()
+		if userns.RunningInUserNS() {
+			mounts, err = rootlessmountopts.FixUp(mounts)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 		if err := mount.All(mounts, dir); err != nil {
 			return nil, nil, err
 		}
