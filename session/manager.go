@@ -46,6 +46,7 @@ type ManagerHealthCfg struct {
 	allowedFailures int
 }
 
+// ManagerOpt is earthly-specific, and required for custom health-check overrides
 type ManagerOpt struct {
 	HealthFrequency       time.Duration
 	HealthTimeout         time.Duration
@@ -54,6 +55,7 @@ type ManagerOpt struct {
 }
 
 // NewManager returns a new Manager
+// earthly-specific: opt param is required for our custom health config
 func NewManager(opt *ManagerOpt) (*Manager, error) {
 	sm := &Manager{
 		sessions: make(map[string]*client),
