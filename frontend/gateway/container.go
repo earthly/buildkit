@@ -161,7 +161,7 @@ func PrepareMounts(ctx context.Context, mm *mounts.MountManager, cm cache.Manage
 
 		switch m.MountType {
 		case opspb.MountType_HOST_BIND: //earthly
-			mountable = mm.MountableHostBind()
+			mountable = mm.MountableHostBind(ctx, m)
 
 		case opspb.MountType_BIND:
 			// if mount creates an output
