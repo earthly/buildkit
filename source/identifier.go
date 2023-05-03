@@ -119,6 +119,8 @@ func FromLLB(op *pb.Op_Source, platform *pb.Platform) (Identifier, error) {
 				id.KnownSSHHosts = v
 			case pb.AttrMountSSHSock:
 				id.MountSSHSock = v
+			case pb.AttrGitLFSInclude: // earthly-specific
+				id.LFSInclude = v
 			}
 		}
 	}

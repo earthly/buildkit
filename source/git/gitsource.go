@@ -165,6 +165,9 @@ func (gs *gitSourceHandler) shaToCacheKey(sha string) string {
 	if gs.src.Subdir != "" {
 		key += ":" + gs.src.Subdir
 	}
+	if gs.src.LFSInclude != "" { // earthly-specific
+		key += ";lfsinclude:" + gs.src.LFSInclude
+	}
 	return key
 }
 
@@ -590,6 +593,13 @@ func (gs *gitSourceHandler) Snapshot(ctx context.Context, g session.Group) (out 
 	_, err = gitWithinDir(ctx, gitDir, checkoutDir, sock, knownHosts, gs.auth, "submodule", "update", "--init", "--recursive", "--depth=1")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to update submodules for %s", urlutil.RedactCredentials(gs.src.Remote))
+	}
+
+	if gs.src.LFSInclude != "" { // earthly-specific
+		_, err = gitWithinDir(ctx, gitDir, checkoutDir, sock, knownHosts, gs.auth, "lfs", "pull", "--include", gs.src.LFSInclude)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to perform lfs pull %s", urlutil.RedactCredentials(gs.src.Remote))
+		}
 	}
 
 	if idmap := mount.IdentityMapping(); idmap != nil {

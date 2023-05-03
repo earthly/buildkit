@@ -262,6 +262,10 @@ func Git(remote, ref string, opts ...GitOption) State {
 		attrs[pb.AttrKeepGitDir] = "true"
 		addCap(&gi.Constraints, pb.CapSourceGitKeepDir)
 	}
+	if gi.LFSInclude != "" { // earthly-specific
+		attrs[pb.AttrGitLFSInclude] = gi.LFSInclude
+		addCap(&gi.Constraints, pb.CapSourceGitLFSInclude)
+	}
 	if url != "" {
 		attrs[pb.AttrFullRemoteURL] = url
 		addCap(&gi.Constraints, pb.CapSourceGitFullURL)
@@ -321,11 +325,19 @@ type GitInfo struct {
 	addAuthCap       bool
 	KnownSSHHosts    string
 	MountSSHSock     string
+	LFSInclude       string // earthly-specific
 }
 
 func KeepGitDir() GitOption {
 	return gitOptionFunc(func(gi *GitInfo) {
 		gi.KeepGitDir = true
+	})
+}
+
+// LFSInclude is earthly-specific and passes an include string to git lfs pull --include=path; multiple values can be separate by commas (as supported by git lfs)
+func LFSInclude(path string) GitOption {
+	return gitOptionFunc(func(gi *GitInfo) {
+		gi.LFSInclude = path
 	})
 }
 
