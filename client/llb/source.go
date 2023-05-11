@@ -266,6 +266,10 @@ func Git(remote, ref string, opts ...GitOption) State {
 		attrs[pb.AttrGitLFSInclude] = gi.LFSInclude
 		addCap(&gi.Constraints, pb.CapSourceGitLFSInclude)
 	}
+	if gi.LogLevel > 0 { // earthly-specific
+		attrs[pb.AttrGitLogLevel] = fmt.Sprintf("%d", gi.LogLevel)
+		addCap(&gi.Constraints, pb.CapSourceGitLogLevel)
+	}
 	if url != "" {
 		attrs[pb.AttrFullRemoteURL] = url
 		addCap(&gi.Constraints, pb.CapSourceGitFullURL)
@@ -317,6 +321,15 @@ func (fn gitOptionFunc) SetGitOption(gi *GitInfo) {
 	fn(gi)
 }
 
+// GitLogLevel is earthly-specific
+type GitLogLevel int
+
+const (
+	GitLogLevelDefault GitLogLevel = iota
+	GitLogLevelDebug
+	GitLogLevelTrace
+)
+
 type GitInfo struct {
 	constraintsWrapper
 	KeepGitDir       bool
@@ -325,7 +338,8 @@ type GitInfo struct {
 	addAuthCap       bool
 	KnownSSHHosts    string
 	MountSSHSock     string
-	LFSInclude       string // earthly-specific
+	LFSInclude       string      // earthly-specific
+	LogLevel         GitLogLevel // earthly-specific
 }
 
 func KeepGitDir() GitOption {
@@ -338,6 +352,13 @@ func KeepGitDir() GitOption {
 func LFSInclude(path string) GitOption {
 	return gitOptionFunc(func(gi *GitInfo) {
 		gi.LFSInclude = path
+	})
+}
+
+// LogLevel is earthly-specific and dynamically controls git logging levels without restarting buildkit
+func LogLevel(level GitLogLevel) GitOption {
+	return gitOptionFunc(func(gi *GitInfo) {
+		gi.LogLevel = level
 	})
 }
 

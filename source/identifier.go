@@ -7,6 +7,7 @@ import (
 
 	"github.com/containerd/containerd/reference"
 	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/solver/pb"
 	srctypes "github.com/moby/buildkit/source/types"
 	digest "github.com/opencontainers/go-digest"
@@ -121,6 +122,12 @@ func FromLLB(op *pb.Op_Source, platform *pb.Platform) (Identifier, error) {
 				id.MountSSHSock = v
 			case pb.AttrGitLFSInclude: // earthly-specific
 				id.LFSInclude = v
+			case pb.AttrGitLogLevel: // earthly-specific
+				l, err := strconv.Atoi(v)
+				if err != nil {
+					return nil, errors.Wrapf(err, "invalid git log level %s", v)
+				}
+				id.LogLevel = llb.GitLogLevel(l)
 			}
 		}
 	}

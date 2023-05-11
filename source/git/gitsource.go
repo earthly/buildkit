@@ -18,6 +18,7 @@ import (
 
 	"github.com/moby/buildkit/cache"
 	"github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/secrets"
@@ -34,6 +35,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+const earthlyCtxDebugLevelKey = "EARTHLY_DEBUG_LEVEL"
 
 var validHex = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var defaultBranch = regexp.MustCompile(`refs/heads/(\S+)`)
@@ -300,6 +303,7 @@ func (gs *gitSourceHandler) mountKnownHosts(ctx context.Context) (string, func()
 }
 
 func (gs *gitSourceHandler) CacheKey(ctx context.Context, g session.Group, index int) (string, string, solver.CacheOpts, bool, error) {
+	ctx = context.WithValue(ctx, earthlyCtxDebugLevelKey, gs.src.LogLevel)
 	remote := gs.src.Remote
 	gs.locker.Lock(remote)
 	defer gs.locker.Unlock(remote)
@@ -368,6 +372,7 @@ func (gs *gitSourceHandler) CacheKey(ctx context.Context, g session.Group, index
 }
 
 func (gs *gitSourceHandler) Snapshot(ctx context.Context, g session.Group) (out cache.ImmutableRef, retErr error) {
+	ctx = context.WithValue(ctx, earthlyCtxDebugLevelKey, gs.src.LogLevel)
 	cacheKey := gs.cacheKey
 	if cacheKey == "" {
 		var err error
@@ -650,20 +655,27 @@ func gitDebug() bool {
 	return os.Getenv("BUILDKIT_DEBUG_GIT") == "1"
 }
 
-func getGitSSHCommand(knownHosts string) string {
+func getGitSSHCommand(knownHosts string, logLevel llb.GitLogLevel) string {
 	gitSSHCommand := "ssh -F /dev/null"
 	if knownHosts != "" {
 		gitSSHCommand += " -o UserKnownHostsFile=" + knownHosts
 	} else {
 		gitSSHCommand += " -o StrictHostKeyChecking=no"
 	}
-	if gitDebug() {
+	if gitDebug() || logLevel >= llb.GitLogLevelTrace {
 		gitSSHCommand += " -vvvv"
+	} else if logLevel >= llb.GitLogLevelDebug {
+		gitSSHCommand += " -v"
 	}
 	return gitSSHCommand
 }
 
 func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...string) (_ *bytes.Buffer, err error) {
+	logLevel, ok := ctx.Value(earthlyCtxDebugLevelKey).(llb.GitLogLevel)
+	if !ok {
+		bklog.G(ctx).Warnf("failed to extract %s", earthlyCtxDebugLevelKey)
+	}
+
 	for {
 		stdout, stderr, flush := logs.NewLogStreams(ctx, false)
 		defer stdout.Close()
@@ -685,13 +697,16 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 			"PATH=" + os.Getenv("PATH"),
 			"HOME=" + os.Getenv("HOME"), // earthly needs this for git to read /root/.gitconfig
 			"GIT_TERMINAL_PROMPT=0",
-			"GIT_SSH_COMMAND=" + getGitSSHCommand(knownHosts),
+			"GIT_SSH_COMMAND=" + getGitSSHCommand(knownHosts, logLevel),
 			//	"GIT_TRACE=1",
 			// earthly-specific: Commented out. We do not want to disable reading from gitconfig.
 			// "GIT_CONFIG_NOSYSTEM=1", // Disable reading from system gitconfig.
 			// "HOME=/dev/null",        // Disable reading from user gitconfig.
 
 			"LC_ALL=C", // Ensure consistent output.
+		}
+		if logLevel >= llb.GitLogLevelTrace {
+			cmd.Env = append(cmd.Env, "GIT_TRACE=1")
 		}
 		if sshAuthSock != "" {
 			cmd.Env = append(cmd.Env, "SSH_AUTH_SOCK="+sshAuthSock)
@@ -711,6 +726,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 			bklog.G(ctx).Infof("git stdout: %s", buf.String())
 			bklog.G(ctx).Infof("git stderr: %s", errbuf.String())
 		}
+		err = errors.Wrapf(err, "EARTHLY_GIT_STDERR: %s", base64.StdEncoding.EncodeToString([]byte(urlutil.RedactAllCredentials(errbuf.String())))) // earthly-specific
 		return buf, err
 	}
 }

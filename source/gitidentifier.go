@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/moby/buildkit/client/llb"
 	srctypes "github.com/moby/buildkit/source/types"
 	"github.com/moby/buildkit/util/sshutil"
 )
@@ -18,7 +19,8 @@ type GitIdentifier struct {
 	AuthHeaderSecret string
 	MountSSHSock     string
 	KnownSSHHosts    string
-	LFSInclude       string // earthly-specific
+	LFSInclude       string          // earthly-specific
+	LogLevel         llb.GitLogLevel // earthly-specific
 }
 
 func NewGitIdentifier(remoteURL string) (*GitIdentifier, error) {
