@@ -456,8 +456,13 @@ func (mm *MountManager) MountableTmpFS(m *pb.Mount) cache.Mountable {
 	return newTmpfs(mm.cm.IdentityMapping(), m.TmpfsOpt)
 }
 
-func (mm *MountManager) MountableHostBind() cache.Mountable { // earthly-specific
-	return newHostBind(mm.cm.IdentityMapping())
+func (mm *MountManager) MountableHostBind(ctx context.Context, m *pb.Mount) cache.Mountable { // earthly-specific
+	// In the API, the SourcePath ends up as m.Selector. We want to use this as
+	// the source path instead, so that in unprivileged mode, FixUp[OCI] can
+	// correctly read the path.
+	source := m.Selector
+	m.Selector = ""
+	return newHostBind(source, mm.cm.IdentityMapping())
 }
 
 func (mm *MountManager) MountableSecret(ctx context.Context, m *pb.Mount, g session.Group) (cache.Mountable, error) {
@@ -514,19 +519,21 @@ func (m *tmpfsMount) IdentityMapping() *idtools.IdentityMapping {
 }
 
 // earthly-specific hostbind functions
-func newHostBind(idmap *idtools.IdentityMapping) cache.Mountable {
-	return &hostBind{idmap: idmap}
+func newHostBind(source string, idmap *idtools.IdentityMapping) cache.Mountable {
+	return &hostBind{source: source, idmap: idmap}
 }
 
 type hostBind struct {
-	idmap *idtools.IdentityMapping
+	source string
+	idmap  *idtools.IdentityMapping
 }
 
 func (f *hostBind) Mount(ctx context.Context, readonly bool, g session.Group) (snapshot.Mountable, error) {
-	return &hostBindMount{readonly: readonly, idmap: f.idmap}, nil
+	return &hostBindMount{source: f.source, readonly: readonly, idmap: f.idmap}, nil
 }
 
 type hostBindMount struct {
+	source   string
 	readonly bool
 	idmap    *idtools.IdentityMapping
 }
@@ -540,6 +547,7 @@ func (m *hostBindMount) Mount() ([]mount.Mount, func() error, error) {
 	}
 	return []mount.Mount{{
 		Type:    "bind",
+		Source:  m.source,
 		Options: opt,
 	}}, func() error { return nil }, nil
 }
