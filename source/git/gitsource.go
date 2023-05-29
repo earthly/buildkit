@@ -726,7 +726,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 			bklog.G(ctx).Infof("git stdout: %s", buf.String())
 			bklog.G(ctx).Infof("git stderr: %s", errbuf.String())
 		}
-		err = errors.Wrapf(err, "EARTHLY_GIT_STDERR: %s", base64.StdEncoding.EncodeToString([]byte(urlutil.RedactAllCredentials(errbuf.String())))) // earthly-specific
+		err = errors.Wrapf(err, "EARTHLY_GIT_STDERR: %s", base64.StdEncoding.EncodeToString([]byte(urlutil.RedactAllCredentials(fmt.Sprintf("git %s\n%s", strings.Join(args, " "), errbuf.String()))))) // earthly-specific
 		return buf, err
 	}
 }
