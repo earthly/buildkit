@@ -696,6 +696,7 @@ func git(ctx context.Context, dir, sshAuthSock, knownHosts string, args ...strin
 		cmd.Env = []string{
 			"PATH=" + os.Getenv("PATH"),
 			"HOME=" + os.Getenv("HOME"), // earthly needs this for git to read /root/.gitconfig
+			"GIT_LFS_SKIP_SMUDGE=1",     // dont automatically pull large files
 			"GIT_TERMINAL_PROMPT=0",
 			"GIT_SSH_COMMAND=" + getGitSSHCommand(knownHosts, logLevel),
 			//	"GIT_TRACE=1",
