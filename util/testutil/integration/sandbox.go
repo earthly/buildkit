@@ -22,6 +22,7 @@ const buildkitdConfigFile = "buildkitd.toml"
 
 type backend struct {
 	address             string
+	dockerAddress       string
 	containerdAddress   string
 	rootless            bool
 	snapshotter         string
@@ -31,6 +32,10 @@ type backend struct {
 
 func (b backend) Address() string {
 	return b.address
+}
+
+func (b backend) DockerAddress() string {
+	return b.dockerAddress
 }
 
 func (b backend) ContainerdAddress() string {
@@ -229,7 +234,7 @@ func runBuildkitd(ctx context.Context, conf *BackendConfig, args []string, logs 
 	}
 	deferF.append(stop)
 
-	if err := waitUnix(address, 15*time.Second); err != nil {
+	if err := waitUnix(address, 15*time.Second, cmd); err != nil {
 		return "", nil, err
 	}
 

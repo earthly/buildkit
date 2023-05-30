@@ -35,6 +35,7 @@ func init() {
 // Backend is the minimal interface that describes a testing backend.
 type Backend interface {
 	Address() string
+	DockerAddress() string
 	ContainerdAddress() string
 	Rootless() bool
 	Snapshotter() string
@@ -448,7 +449,7 @@ func runStargzSnapshotter(cfg *BackendConfig) (address string, cl func() error, 
 	if err != nil {
 		return "", nil, err
 	}
-	if err = waitUnix(address, 10*time.Second); err != nil {
+	if err = waitUnix(address, 10*time.Second, cmd); err != nil {
 		snStop()
 		return "", nil, errors.Wrapf(err, "containerd-stargz-grpc did not start up: %s", formatLogs(cfg.Logs))
 	}

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	intoto "github.com/in-toto/in-toto-golang/in_toto"
 	slsa02 "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/v0.2"
 	controlapi "github.com/moby/buildkit/api/services/control"
 	"github.com/moby/buildkit/cache"
@@ -26,7 +27,6 @@ import (
 	"github.com/moby/buildkit/solver/llbsolver/provenance"
 	"github.com/moby/buildkit/solver/result"
 	spb "github.com/moby/buildkit/sourcepolicy/pb"
-	"github.com/moby/buildkit/util/attestation"
 	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/compression"
 	"github.com/moby/buildkit/util/entitlements"
@@ -212,7 +212,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 			if err != nil {
 				return nil, nil, err
 			}
-			w, err := s.history.OpenBlobWriter(ctx, attestation.MediaTypeDockerSchema2AttestationType)
+			w, err := s.history.OpenBlobWriter(ctx, intoto.PayloadType)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -910,27 +910,26 @@ func inBuilderContext(ctx context.Context, b solver.Builder, name, id string, f 
 	}
 	return b.InContext(ctx, func(ctx context.Context, g session.Group) error {
 		pw, _, ctx := progress.NewFromContext(ctx, progress.WithMetadata("vertex", v.Digest))
-		notifyCompleted := notifyStarted(ctx, &v, false)
+		notifyCompleted := notifyStarted(ctx, &v)
 		defer pw.Close()
 		err := f(ctx, g)
-		notifyCompleted(err, false)
+		notifyCompleted(err)
 		return err
 	})
 }
 
-func notifyStarted(ctx context.Context, v *client.Vertex, cached bool) func(err error, cached bool) {
+func notifyStarted(ctx context.Context, v *client.Vertex) func(err error) {
 	pw, _, _ := progress.NewFromContext(ctx)
 	start := time.Now()
 	v.Started = &start
 	v.Completed = nil
-	v.Cached = cached
 	id := identity.NewID()
 	pw.Write(id, *v)
-	return func(err error, cached bool) {
+	return func(err error) {
 		defer pw.Close()
 		stop := time.Now()
 		v.Completed = &stop
-		v.Cached = cached
+		v.Cached = false
 		if err != nil {
 			v.Error = err.Error()
 		}

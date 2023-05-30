@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -11,6 +12,7 @@ func TestLoad(t *testing.T) {
 	const testConfig = `
 root = "/foo/bar"
 debug=true
+trace=true
 insecure-entitlements = ["security.insecure"]
 
 [gc]
@@ -44,8 +46,11 @@ filters=["foo==bar"]
 keepBytes=20
 keepDuration=3600
 [[worker.containerd.gcpolicy]]
-keepBytes=40
+keepBytes="40MB"
 keepDuration=7200
+[[worker.containerd.gcpolicy]]
+keepBytes="20%"
+keepDuration="24h"
 
 [registry."docker.io"]
 mirrors=["hub.docker.io"]
@@ -68,6 +73,7 @@ searchDomains=["example.com"]
 
 	require.Equal(t, "/foo/bar", cfg.Root)
 	require.Equal(t, true, cfg.Debug)
+	require.Equal(t, true, cfg.Trace)
 	require.Equal(t, "security.insecure", cfg.Entitlements[0])
 
 	require.Equal(t, "buildkit.sock", cfg.GRPC.Address[0])
@@ -78,7 +84,7 @@ searchDomains=["example.com"]
 	require.Equal(t, "mycert.pem", cfg.GRPC.TLS.Cert)
 
 	require.NotNil(t, cfg.Workers.OCI.Enabled)
-	require.Equal(t, int64(123456789), cfg.Workers.OCI.GCKeepStorage)
+	require.Equal(t, int64(123456789), cfg.Workers.OCI.GCKeepStorage.Bytes)
 	require.Equal(t, true, *cfg.Workers.OCI.Enabled)
 	require.Equal(t, "overlay", cfg.Workers.OCI.Snapshotter)
 	require.Equal(t, true, cfg.Workers.OCI.Rootless)
@@ -93,15 +99,18 @@ searchDomains=["example.com"]
 
 	require.Equal(t, 0, len(cfg.Workers.OCI.GCPolicy))
 	require.Equal(t, "non-default", cfg.Workers.Containerd.Namespace)
-	require.Equal(t, 2, len(cfg.Workers.Containerd.GCPolicy))
+	require.Equal(t, 3, len(cfg.Workers.Containerd.GCPolicy))
 
 	require.Nil(t, cfg.Workers.Containerd.GC)
 	require.Equal(t, true, cfg.Workers.Containerd.GCPolicy[0].All)
 	require.Equal(t, false, cfg.Workers.Containerd.GCPolicy[1].All)
-	require.Equal(t, int64(20), cfg.Workers.Containerd.GCPolicy[0].KeepBytes)
-	require.Equal(t, int64(40), cfg.Workers.Containerd.GCPolicy[1].KeepBytes)
-	require.Equal(t, int64(3600), cfg.Workers.Containerd.GCPolicy[0].KeepDuration)
-	require.Equal(t, int64(7200), cfg.Workers.Containerd.GCPolicy[1].KeepDuration)
+	require.Equal(t, false, cfg.Workers.Containerd.GCPolicy[2].All)
+	require.Equal(t, int64(20), cfg.Workers.Containerd.GCPolicy[0].KeepBytes.Bytes)
+	require.Equal(t, int64(40*1024*1024), cfg.Workers.Containerd.GCPolicy[1].KeepBytes.Bytes)
+	require.Equal(t, int64(20), cfg.Workers.Containerd.GCPolicy[2].KeepBytes.Percentage)
+	require.Equal(t, time.Duration(3600), cfg.Workers.Containerd.GCPolicy[0].KeepDuration.Duration/time.Second)
+	require.Equal(t, time.Duration(7200), cfg.Workers.Containerd.GCPolicy[1].KeepDuration.Duration/time.Second)
+	require.Equal(t, time.Duration(86400), cfg.Workers.Containerd.GCPolicy[2].KeepDuration.Duration/time.Second)
 	require.Equal(t, 1, len(cfg.Workers.Containerd.GCPolicy[0].Filters))
 	require.Equal(t, 0, len(cfg.Workers.Containerd.GCPolicy[1].Filters))
 

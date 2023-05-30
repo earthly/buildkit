@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile-upstream:master
 
-ARG RUNC_VERSION=v1.1.5
-ARG CONTAINERD_VERSION=v1.7.0
+ARG RUNC_VERSION=v1.1.7
+ARG CONTAINERD_VERSION=v1.7.1
 # containerd v1.6 for integration tests
-ARG CONTAINERD_ALT_VERSION_16=v1.6.19
+ARG CONTAINERD_ALT_VERSION_16=v1.6.21
 ARG REGISTRY_VERSION=2.8.0
 ARG ROOTLESSKIT_VERSION=v1.0.1
 ARG CNI_VERSION=v1.2.0
-ARG STARGZ_SNAPSHOTTER_VERSION=v0.14.1
-ARG NERDCTL_VERSION=v1.0.0
+ARG STARGZ_SNAPSHOTTER_VERSION=v0.14.3
+ARG NERDCTL_VERSION=v1.4.0
 ARG DNSNAME_VERSION=v1.3.1
-ARG NYDUS_VERSION=v2.1.0
+ARG NYDUS_VERSION=v2.1.6
 ARG MINIO_VERSION=RELEASE.2022-05-03T20-36-08Z
 ARG MINIO_MC_VERSION=RELEASE.2022-05-04T06-07-55Z
 ARG AZURITE_VERSION=3.18.0
@@ -236,7 +236,7 @@ COPY --link --from=dnsname /usr/bin/dnsname /opt/cni/bin/
 
 FROM buildkit-base AS integration-tests-base
 ENV BUILDKIT_INTEGRATION_ROOTLESS_IDPAIR="1000:1000"
-RUN apk add --no-cache shadow shadow-uidmap sudo vim iptables ip6tables dnsmasq fuse curl git-daemon \
+RUN apk add --no-cache shadow shadow-uidmap sudo vim iptables ip6tables dnsmasq fuse curl git-daemon openssh-client \
   && useradd --create-home --home-dir /home/user --uid 1000 -s /bin/sh user \
   && echo "XDG_RUNTIME_DIR=/run/user/1000; export XDG_RUNTIME_DIR" >> /home/user/.profile \
   && mkdir -m 0700 -p /run/user/1000 \

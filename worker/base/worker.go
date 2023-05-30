@@ -11,7 +11,6 @@ import (
 	"github.com/containerd/containerd/diff"
 	"github.com/containerd/containerd/gc"
 	"github.com/containerd/containerd/images"
-	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/remotes/docker"
 	"github.com/docker/docker/pkg/idtools"
@@ -31,6 +30,7 @@ import (
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/snapshot"
+	containerdsnapshot "github.com/moby/buildkit/snapshot/containerd"
 	"github.com/moby/buildkit/snapshot/imagerefchecker"
 	"github.com/moby/buildkit/solver"
 	"github.com/moby/buildkit/solver/llbsolver/mounts"
@@ -43,6 +43,7 @@ import (
 	"github.com/moby/buildkit/source/local"
 	"github.com/moby/buildkit/util/archutil"
 	"github.com/moby/buildkit/util/bklog"
+	"github.com/moby/buildkit/util/leaseutil"
 	"github.com/moby/buildkit/util/network"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/moby/buildkit/util/progress/controller"
@@ -68,13 +69,13 @@ type WorkerOpt struct {
 	NetworkProviders map[pb.NetMode]network.Provider
 	Executor         executor.Executor
 	Snapshotter      snapshot.Snapshotter
-	ContentStore     content.Store
+	ContentStore     *containerdsnapshot.Store
 	Applier          diff.Applier
 	Differ           diff.Comparer
 	ImageStore       images.Store // optional
 	RegistryHosts    docker.RegistryHosts
 	IdentityMapping  *idtools.IdentityMapping
-	LeaseManager     leases.Manager
+	LeaseManager     *leaseutil.Manager
 	GarbageCollect   func(context.Context) (gc.Stats, error)
 	ParallelismSem   *semutil.Weighted
 	MetadataStore    *metadata.Store
@@ -229,11 +230,11 @@ func (w *Worker) GCAnalytics() (cache.GCSummary, *cache.GCRunAnalytics, *cache.G
 	return w.CacheMgr.GetGCAnalytics()
 }
 
-func (w *Worker) ContentStore() content.Store {
+func (w *Worker) ContentStore() *containerdsnapshot.Store {
 	return w.WorkerOpt.ContentStore
 }
 
-func (w *Worker) LeaseManager() leases.Manager {
+func (w *Worker) LeaseManager() *leaseutil.Manager {
 	return w.WorkerOpt.LeaseManager
 }
 

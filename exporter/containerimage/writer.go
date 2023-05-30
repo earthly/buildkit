@@ -439,7 +439,7 @@ func (ic *ImageWriter) commitAttestationsManifest(ctx context.Context, opts *Ima
 		}
 		digest := digest.FromBytes(data)
 		desc := ocispecs.Descriptor{
-			MediaType: attestationTypes.MediaTypeDockerSchema2AttestationType,
+			MediaType: intoto.PayloadType,
 			Digest:    digest,
 			Size:      int64(len(data)),
 			Annotations: map[string]string{
@@ -532,11 +532,10 @@ func (ic *ImageWriter) Applier() diff.Applier {
 func defaultImageConfig() ([]byte, error) {
 	pl := platforms.Normalize(platforms.DefaultSpec())
 
-	img := ocispecs.Image{
-		Architecture: pl.Architecture,
-		OS:           pl.OS,
-		Variant:      pl.Variant,
-	}
+	img := ocispecs.Image{}
+	img.Architecture = pl.Architecture
+	img.OS = pl.OS
+	img.Variant = pl.Variant
 	img.RootFS.Type = "layers"
 	img.Config.WorkingDir = "/"
 	img.Config.Env = []string{"PATH=" + system.DefaultPathEnv(pl.OS)}
@@ -545,13 +544,12 @@ func defaultImageConfig() ([]byte, error) {
 }
 
 func attestationsConfig(layers []ocispecs.Descriptor) ([]byte, error) {
-	img := ocispecs.Image{
-		Architecture: intotoPlatform.Architecture,
-		OS:           intotoPlatform.OS,
-		OSVersion:    intotoPlatform.OSVersion,
-		OSFeatures:   intotoPlatform.OSFeatures,
-		Variant:      intotoPlatform.Variant,
-	}
+	img := ocispecs.Image{}
+	img.Architecture = intotoPlatform.Architecture
+	img.OS = intotoPlatform.OS
+	img.OSVersion = intotoPlatform.OSVersion
+	img.OSFeatures = intotoPlatform.OSFeatures
+	img.Variant = intotoPlatform.Variant
 	img.RootFS.Type = "layers"
 	for _, layer := range layers {
 		img.RootFS.DiffIDs = append(img.RootFS.DiffIDs, digest.Digest(layer.Annotations["containerd.io/uncompressed"]))

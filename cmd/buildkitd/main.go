@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/containerd/containerd/pkg/seed" //nolint:staticcheck // SA1019 deprecated
 	"github.com/containerd/containerd/pkg/userns"
@@ -69,6 +68,7 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func init() {
@@ -158,6 +158,10 @@ func main() {
 			Name:  "debug",
 			Usage: "enable debug output in logs",
 		},
+		cli.BoolFlag{
+			Name:  "trace",
+			Usage: "enable trace output in logs (highly verbose, could affect performance)",
+		},
 		cli.StringFlag{
 			Name:  "root",
 			Usage: "path to state directory",
@@ -199,6 +203,7 @@ func main() {
 		},
 	)
 	app.Flags = append(app.Flags, appFlags...)
+	app.Flags = append(app.Flags, serviceFlags()...)
 
 	app.Action = func(c *cli.Context) error {
 		// TODO: On Windows this always returns -1. The actual "are you admin" check is very Windows-specific.
@@ -223,6 +228,10 @@ func main() {
 		if cfg.Debug {
 			logrus.SetLevel(logrus.DebugLevel)
 		}
+		if cfg.Trace {
+			logrus.SetLevel(logrus.TraceLevel)
+		}
+
 		logrus.SetOutput(os.Stderr) // earthly-specific: force logs to show up under earthly-buildkitd container logs
 
 		if cfg.GRPC.DebugAddress != "" {
@@ -261,6 +270,15 @@ func main() {
 			return errors.Wrapf(err, "failed to create %s", root)
 		}
 
+		// Stop if we are registering or unregistering against Windows SCM.
+		stop, err := registerUnregisterService(cfg.Root)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		if stop {
+			return nil
+		}
+
 		lockPath := filepath.Join(root, "buildkitd.lock")
 		lock := flock.New(lockPath)
 		locked, err := lock.TryLock()
@@ -283,6 +301,7 @@ func main() {
 		defer controller.Close()
 
 		controller.Register(server)
+		reflection.Register(server)
 
 		// earthly specific
 		ctxReg, cancelReg := context.WithCancel(ctx)
@@ -322,6 +341,12 @@ func main() {
 				}
 			}
 		}
+
+		// Launch as a Windows Service if necessary
+		if err := launchService(server); err != nil {
+			logrus.Fatal(err)
+		}
+
 		errCh := make(chan error, 1)
 		if err := serveGRPC(cfg.GRPC, server, errCh); err != nil {
 			return err
@@ -488,6 +513,9 @@ func applyMainFlags(c *cli.Context, cfg *config.Config) error {
 	if c.IsSet("debug") {
 		cfg.Debug = c.Bool("debug")
 	}
+	if c.IsSet("trace") {
+		cfg.Trace = c.Bool("trace")
+	}
 	if c.IsSet("root") {
 		cfg.Root = c.String("root")
 	}
@@ -532,6 +560,8 @@ func applyMainFlags(c *cli.Context, cfg *config.Config) error {
 	if tlsca := c.String("tlscacert"); tlsca != "" {
 		cfg.GRPC.TLS.CA = tlsca
 	}
+	applyPlatformFlags(c)
+
 	return nil
 }
 
@@ -822,15 +852,15 @@ func getGCPolicy(cfg config.GCConfig, root string) []client.PruneInfo {
 		return nil
 	}
 	if len(cfg.GCPolicy) == 0 {
-		cfg.GCPolicy = config.DefaultGCPolicy(root, cfg.GCKeepStorage)
+		cfg.GCPolicy = config.DefaultGCPolicy(cfg.GCKeepStorage)
 	}
 	out := make([]client.PruneInfo, 0, len(cfg.GCPolicy))
 	for _, rule := range cfg.GCPolicy {
 		out = append(out, client.PruneInfo{
 			Filter:       rule.Filters,
 			All:          rule.All,
-			KeepBytes:    rule.KeepBytes,
-			KeepDuration: time.Duration(rule.KeepDuration) * time.Second,
+			KeepBytes:    rule.KeepBytes.AsBytes(root),
+			KeepDuration: rule.KeepDuration.Duration,
 		})
 	}
 	return out

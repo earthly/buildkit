@@ -58,8 +58,8 @@ func TestFormattingPatterns(t *testing.T) {
 func TestStateSourceMapMarshal(t *testing.T) {
 	t.Parallel()
 
-	sm1 := NewSourceMap(nil, "foo", []byte("data1"))
-	sm2 := NewSourceMap(nil, "bar", []byte("data2"))
+	sm1 := NewSourceMap(nil, "foo", "lang1", []byte("data1"))
+	sm2 := NewSourceMap(nil, "bar", "lang2", []byte("data2"))
 
 	s := Image(
 		"myimage",
@@ -78,10 +78,12 @@ func TestStateSourceMapMarshal(t *testing.T) {
 	require.Equal(t, 1, len(def.Source.Locations))
 
 	require.Equal(t, "foo", def.Source.Infos[0].Filename)
+	require.Equal(t, "lang1", def.Source.Infos[0].Language)
 	require.Equal(t, []byte("data1"), def.Source.Infos[0].Data)
 	require.Nil(t, def.Source.Infos[0].Definition)
 
 	require.Equal(t, "bar", def.Source.Infos[1].Filename)
+	require.Equal(t, "lang2", def.Source.Infos[1].Language)
 	require.Equal(t, []byte("data2"), def.Source.Infos[1].Data)
 	require.Nil(t, def.Source.Infos[1].Definition)
 
@@ -144,16 +146,17 @@ func TestPlatformFromImage(t *testing.T) {
 
 	s := Image("srcimage", LinuxS390x).
 		Run(Args([]string{"foo"})).
-		File(Mkdir("/foo", 0700).Mkfile("/bar", 0600, []byte("bar")))
+		File(Mkdir("/foo", 0700).Mkfile("/bar", 0600, []byte("bar"))).
+		Run(Args([]string{"afterfile"})).Root()
 
-	dest := Image("destimage").File(Copy(s, "/", "/"))
+	dest := Image("destimage").File(Copy(s, "/", "/")).Run(Args([]string{"afterfile"}))
 
 	def, err := dest.Marshal(context.TODO(), LinuxPpc64le)
 	require.NoError(t, err)
 
 	m, arr := parseDef(t, def.Def)
 	_ = m
-	require.Equal(t, 6, len(arr))
+	require.Equal(t, 8, len(arr))
 
 	dgst, idx := last(t, arr)
 	require.Equal(t, 0, idx)
@@ -161,10 +164,17 @@ func TestPlatformFromImage(t *testing.T) {
 	vtx, ok := m[dgst]
 	require.Equal(t, true, ok)
 
+	_, ok = vtx.Op.(*pb.Op_Exec)
+	require.Equal(t, true, ok)
+	require.Equal(t, "ppc64le", vtx.Platform.Architecture)
+
+	vtx, ok = m[vtx.Inputs[0].Digest]
+	require.Equal(t, true, ok)
+
 	f, ok := vtx.Op.(*pb.Op_File)
 	require.Equal(t, true, ok)
 	require.Equal(t, 1, len(f.File.Actions))
-	require.Equal(t, "ppc64le", vtx.Platform.Architecture)
+	require.Nil(t, vtx.Platform)
 
 	mainVtx := vtx
 	vtx, ok = m[vtx.Inputs[0].Digest]
@@ -178,10 +188,17 @@ func TestPlatformFromImage(t *testing.T) {
 	vtx, ok = m[mainVtx.Inputs[1].Digest]
 	require.Equal(t, true, ok)
 
+	_, ok = vtx.Op.(*pb.Op_Exec)
+	require.Equal(t, true, ok)
+	require.Equal(t, "s390x", vtx.Platform.Architecture)
+
+	vtx, ok = m[vtx.Inputs[0].Digest]
+	require.Equal(t, true, ok)
+
 	f, ok = vtx.Op.(*pb.Op_File)
 	require.Equal(t, true, ok)
 	require.Equal(t, 2, len(f.File.Actions))
-	require.Equal(t, "s390x", vtx.Platform.Architecture)
+	require.Nil(t, vtx.Platform)
 
 	vtx, ok = m[vtx.Inputs[0].Digest]
 	require.Equal(t, true, ok)
@@ -197,6 +214,57 @@ func TestPlatformFromImage(t *testing.T) {
 	require.Equal(t, true, ok)
 	require.Equal(t, "docker-image://docker.io/library/srcimage:latest", src.Source.Identifier)
 	require.Equal(t, "s390x", vtx.Platform.Architecture)
+}
+
+func TestPlatformFromImageWithMerge(t *testing.T) {
+	t.Parallel()
+
+	s := Image("srcimage", LinuxS390x)
+
+	s2 := Scratch().File(Mkdir("/foo", 0700).Mkfile("/bar", 0600, []byte("bar")))
+
+	dest := Merge([]State{s, s2}).Run(Args([]string{"aftermerge"}))
+
+	def, err := dest.Marshal(context.TODO(), LinuxPpc64le)
+	require.NoError(t, err)
+
+	m, arr := parseDef(t, def.Def)
+	_ = m
+	require.Equal(t, 5, len(arr))
+
+	dgst, idx := last(t, arr)
+	require.Equal(t, 0, idx)
+
+	vtx, ok := m[dgst]
+	require.Equal(t, true, ok)
+
+	_, ok = vtx.Op.(*pb.Op_Exec)
+	require.Equal(t, true, ok)
+	require.Equal(t, "s390x", vtx.Platform.Architecture)
+
+	vtx, ok = m[vtx.Inputs[0].Digest]
+	require.Equal(t, true, ok)
+
+	_, ok = vtx.Op.(*pb.Op_Merge)
+	require.Equal(t, true, ok)
+	require.Nil(t, vtx.Platform)
+
+	mainVtx := vtx
+	vtx, ok = m[vtx.Inputs[0].Digest]
+	require.Equal(t, true, ok)
+
+	src, ok := vtx.Op.(*pb.Op_Source)
+	require.Equal(t, true, ok)
+	require.Equal(t, "docker-image://docker.io/library/srcimage:latest", src.Source.Identifier)
+	require.Equal(t, "s390x", vtx.Platform.Architecture)
+
+	vtx, ok = m[mainVtx.Inputs[1].Digest]
+	require.Equal(t, true, ok)
+
+	f, ok := vtx.Op.(*pb.Op_File)
+	require.Equal(t, true, ok)
+	require.Equal(t, 2, len(f.File.Actions))
+	require.Nil(t, vtx.Platform)
 }
 
 func getEnvHelper(t *testing.T, s State, k string) (string, bool) {

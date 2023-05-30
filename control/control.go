@@ -11,7 +11,6 @@ import (
 
 	contentapi "github.com/containerd/containerd/api/services/content/v1"
 	"github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/services/content/contentserver"
 	"github.com/docker/distribution/reference"
 	"github.com/mitchellh/hashstructure/v2"
@@ -27,12 +26,14 @@ import (
 	"github.com/moby/buildkit/frontend/attestations"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/grpchijack"
+	containerdsnapshot "github.com/moby/buildkit/snapshot/containerd"
 	"github.com/moby/buildkit/solver"
 	"github.com/moby/buildkit/solver/llbsolver"
 	"github.com/moby/buildkit/solver/llbsolver/proc"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/imageutil"
+	"github.com/moby/buildkit/util/leaseutil"
 	"github.com/moby/buildkit/util/throttle"
 	"github.com/moby/buildkit/util/tracing/transform"
 	"github.com/moby/buildkit/version"
@@ -59,8 +60,8 @@ type Opt struct {
 	Entitlements              []string
 	TraceCollector            sdktrace.SpanExporter
 	HistoryDB                 *bbolt.DB
-	LeaseManager              leases.Manager
-	ContentStore              content.Store
+	LeaseManager              *leaseutil.Manager
+	ContentStore              *containerdsnapshot.Store
 	HistoryConfig             *config.HistoryConfig
 }
 
@@ -80,12 +81,15 @@ type Controller struct { // TODO: ControlService
 func NewController(opt Opt) (*Controller, error) {
 	gatewayForwarder := controlgateway.NewGatewayForwarder()
 
-	hq := llbsolver.NewHistoryQueue(llbsolver.HistoryQueueOpt{
+	hq, err := llbsolver.NewHistoryQueue(llbsolver.HistoryQueueOpt{
 		DB:           opt.HistoryDB,
 		LeaseManager: opt.LeaseManager,
 		ContentStore: opt.ContentStore,
 		CleanConfig:  opt.HistoryConfig,
 	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create history queue")
+	}
 
 	s, err := llbsolver.New(llbsolver.Opt{
 		WorkerController: opt.WorkerController,
@@ -126,7 +130,7 @@ func (c *Controller) Register(server *grpc.Server) {
 	c.gatewayForwarder.Register(server)
 	tracev1.RegisterTraceServiceServer(server, c)
 
-	store := &roContentStore{c.opt.ContentStore}
+	store := &roContentStore{c.opt.ContentStore.WithFallbackNS(c.opt.ContentStore.Namespace() + "_history")}
 	contentapi.RegisterContentServer(server, contentserver.New(store))
 }
 
@@ -169,7 +173,7 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 		imageutil.CancelCacheLeases()
 	}
 
-	ch := make(chan client.UsageInfo)
+	ch := make(chan client.UsageInfo, 32)
 
 	eg, ctx := errgroup.WithContext(stream.Context())
 	workers, err := c.opt.WorkerController.List()
@@ -211,6 +215,11 @@ func (c *Controller) Prune(req *controlapi.PruneRequest, stream controlapi.Contr
 	})
 
 	eg2.Go(func() error {
+		defer func() {
+			// drain channel on error
+			for range ch {
+			}
+		}()
 		for r := range ch {
 			didPrune = true
 			if err := stream.Send(&controlapi.UsageRecord{
@@ -451,6 +460,11 @@ func (c *Controller) Status(req *controlapi.StatusRequest, stream controlapi.Con
 	})
 
 	eg.Go(func() error {
+		defer func() {
+			// drain channel on error
+			for range ch {
+			}
+		}()
 		for {
 			ss, ok := <-ch
 			if !ok {

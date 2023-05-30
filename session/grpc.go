@@ -117,6 +117,11 @@ func monitorHealth(ctx context.Context, cc *grpc.ClientConn, cancelConn func()) 
 			}
 
 			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				if failedBefore {
 					bklog.G(ctx).Error("healthcheck failed fatally")
 					return
@@ -134,7 +139,7 @@ func monitorHealth(ctx context.Context, cc *grpc.ClientConn, cancelConn func()) 
 				}
 			}
 
-			bklog.G(ctx).WithFields(logFields).Debug("healthcheck completed")
+			bklog.G(ctx).WithFields(logFields).Trace("healthcheck completed")
 		}
 	}
 }

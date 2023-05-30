@@ -35,7 +35,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     outputs:
       pkgs: ${{ steps.set.outputs.pkgs }}
       kinds: ${{ steps.set.outputs.kinds }}
@@ -99,16 +99,12 @@ jobs:
             *.cache-to=type=gha,scope=${{ inputs.cache_scope }}
 
   run:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs:
       - prepare
     strategy:
       fail-fast: false
       matrix:
-        pkg: ${{ fromJson(needs.prepare.outputs.pkgs) }}
-        kind: ${{ fromJson(needs.prepare.outputs.kinds) }}
-        tags: ${{ fromJson(needs.prepare.outputs.tags) }}
-        include: ${{ fromJson(needs.prepare.outputs.includes) }}
         worker:
           - containerd
           - containerd-rootless
@@ -117,6 +113,10 @@ jobs:
           - oci
           - oci-rootless
           - oci-snapshotter-stargz
+        pkg: ${{ fromJson(needs.prepare.outputs.pkgs) }}
+        kind: ${{ fromJson(needs.prepare.outputs.kinds) }}
+        tags: ${{ fromJson(needs.prepare.outputs.tags) }}
+        include: ${{ fromJson(needs.prepare.outputs.includes) }}
     steps:
       -
         name: Environment variables
