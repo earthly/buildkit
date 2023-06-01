@@ -2,7 +2,9 @@ package solver
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/moby/buildkit/solver/internal/pipe"
@@ -107,6 +109,7 @@ func (s *scheduler) loop() {
 
 // dispatch schedules an edge to be processed
 func (s *scheduler) dispatch(e *edge) {
+	fmt.Printf("dispatch called by %s\n", debug.Stack())
 	inc := make([]pipe.Sender, len(s.incoming[e]))
 	for i, p := range s.incoming[e] {
 		inc[i] = p.Sender
