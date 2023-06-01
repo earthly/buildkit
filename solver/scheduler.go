@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime/debug"
 	"sync"
 
 	"github.com/moby/buildkit/solver/internal/pipe"
@@ -109,7 +108,7 @@ func (s *scheduler) loop() {
 
 // dispatch schedules an edge to be processed
 func (s *scheduler) dispatch(e *edge) {
-	fmt.Printf("dispatch called by %s\n", debug.Stack())
+	//fmt.Printf("dispatch called by %s\n", debug.Stack())
 	inc := make([]pipe.Sender, len(s.incoming[e]))
 	for i, p := range s.incoming[e] {
 		inc[i] = p.Sender
@@ -194,6 +193,9 @@ func (s *scheduler) dispatch(e *edge) {
 	}
 	if len(openIncoming) == 0 && len(openOutgoing) > 0 {
 		e.markFailed(pf, errors.New("buildkit scheduler error: return leaving outgoing open. Please report this with BUILDKIT_SCHEDULER_DEBUG=1"))
+	}
+	if e.err == nil {
+		fmt.Printf("I'm ok with openIncoming=%d openOutgoing=%d\n", len(openIncoming), len(openOutgoing))
 	}
 }
 
