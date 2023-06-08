@@ -580,6 +580,19 @@ func (c *Controller) Reserve(ctx context.Context, r *controlapi.ReserveRequest) 
 	return &controlapi.ReserveResponse{}, nil
 }
 
+func (c *Controller) SessionHistory(ctx context.Context, r *controlapi.SessionHistoryRequest) (*controlapi.SessionHistoryResponse, error) {
+	history := c.opt.SessionManager.GetSessionHistory()
+	var resp []*controlapi.SessionHistoryResponse_History
+	for id, h := range history {
+		resp = append(resp, &controlapi.SessionHistoryResponse_History{
+			SessionID: id,
+			Start:     &h.Start,
+			End:       &h.End,
+		})
+	}
+	return &controlapi.SessionHistoryResponse{History: resp}, nil
+}
+
 func (c *Controller) gc() {
 	c.gcmu.Lock()
 	defer c.gcmu.Unlock()

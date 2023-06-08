@@ -26,6 +26,7 @@ service Control {
 	// Earthly-specific.
 	rpc ShutdownIfIdle(ShutdownIfIdleRequest) returns (ShutdownIfIdleResponse);
 	rpc Reserve(ReserveRequest) returns (ReserveResponse);
+	rpc SessionHistory(SessionHistoryRequest) returns (SessionHistoryResponse);
 
 	rpc ListenBuildHistory(BuildHistoryRequest) returns (stream BuildHistoryEvent);
 	rpc UpdateBuildHistory(UpdateBuildHistoryRequest) returns (UpdateBuildHistoryResponse);
@@ -190,6 +191,17 @@ message ShutdownIfIdleResponse {
 message ReserveRequest {}
 
 message ReserveResponse {}
+
+message SessionHistoryRequest {}
+
+message SessionHistoryResponse {
+	message History {
+		string sessionID = 1;
+		google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true ];
+		google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true ];
+	}
+	repeated History history = 1;
+}
 
 message BuildHistoryRequest {
 	bool ActiveOnly = 1;
