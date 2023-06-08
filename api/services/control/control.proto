@@ -27,6 +27,7 @@ service Control {
 	rpc ShutdownIfIdle(ShutdownIfIdleRequest) returns (ShutdownIfIdleResponse);
 	rpc Reserve(ReserveRequest) returns (ReserveResponse);
 	rpc SessionHistory(SessionHistoryRequest) returns (SessionHistoryResponse);
+	rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
 
 	rpc ListenBuildHistory(BuildHistoryRequest) returns (stream BuildHistoryEvent);
 	rpc UpdateBuildHistory(UpdateBuildHistoryRequest) returns (UpdateBuildHistoryResponse);
@@ -202,6 +203,12 @@ message SessionHistoryResponse {
 	}
 	repeated History history = 1;
 }
+
+message CancelSessionRequest {
+	string sessionID = 1;
+}
+
+message CancelSessionResponse {}
 
 message BuildHistoryRequest {
 	bool ActiveOnly = 1;

@@ -162,6 +162,27 @@ func (sm *Manager) GetSessionHistory() map[string]*History {
 	return historyCopy
 }
 
+var ErrNotFound = errors.New("session not found")
+
+func (sm *Manager) CancelSession(sessionID string) error {
+	sm.mu.Lock()
+	var session *Session
+	for id, s := range sm.sessions {
+		if id == sessionID {
+			session = &s.Session
+		}
+	}
+	sm.mu.Unlock()
+	if session == nil {
+		return ErrNotFound
+	}
+	err := session.Close()
+	if err != nil {
+		return errors.Wrap(err, "failed canceling active session")
+	}
+	return nil
+}
+
 // HandleHTTPRequest handles an incoming HTTP request
 func (sm *Manager) HandleHTTPRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	hijacker, ok := w.(http.Hijacker)

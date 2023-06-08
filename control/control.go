@@ -14,6 +14,17 @@ import (
 	"github.com/containerd/containerd/services/content/contentserver"
 	"github.com/docker/distribution/reference"
 	"github.com/mitchellh/hashstructure/v2"
+	digest "github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
+	"go.etcd.io/bbolt"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+
 	controlapi "github.com/moby/buildkit/api/services/control"
 	apitypes "github.com/moby/buildkit/api/types"
 	"github.com/moby/buildkit/cache/remotecache"
@@ -38,16 +49,6 @@ import (
 	"github.com/moby/buildkit/util/tracing/transform"
 	"github.com/moby/buildkit/version"
 	"github.com/moby/buildkit/worker"
-	digest "github.com/opencontainers/go-digest"
-	"github.com/pkg/errors"
-	"go.etcd.io/bbolt"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 type Opt struct {
@@ -591,6 +592,17 @@ func (c *Controller) SessionHistory(ctx context.Context, r *controlapi.SessionHi
 		})
 	}
 	return &controlapi.SessionHistoryResponse{History: resp}, nil
+}
+
+func (c *Controller) CancelSession(ctx context.Context, r *controlapi.CancelSessionRequest) (*controlapi.CancelSessionResponse, error) {
+	err := c.opt.SessionManager.CancelSession(r.SessionID)
+	if err != nil {
+		if errors.Is(err, session.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "session with id '%' not found", r.SessionID)
+		}
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+	return &controlapi.CancelSessionResponse{}, nil
 }
 
 func (c *Controller) gc() {
