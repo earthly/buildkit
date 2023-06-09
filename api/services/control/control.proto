@@ -206,6 +206,7 @@ message SessionHistoryResponse {
 
 message CancelSessionRequest {
 	string sessionID = 1;
+	string reason = 2;
 }
 
 message CancelSessionResponse {}

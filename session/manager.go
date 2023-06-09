@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -30,8 +29,10 @@ type client struct {
 }
 
 type History struct {
-	Start time.Time
-	End   time.Time
+	Start        time.Time
+	End          time.Time
+	Canceled     bool
+	CancelReason string
 }
 
 // Manager is a controller for accessing currently active sessions
@@ -137,11 +138,13 @@ func (sm *Manager) recordSessionStart(sessionID string) {
 }
 
 // earthly-specific
-func (sm *Manager) recordSessionEnd(sessionID string) {
+func (sm *Manager) recordSessionEnd(sessionID string, canceled bool, cancelReason string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	if h := sm.history[sessionID]; h != nil {
 		h.End = time.Now()
+		h.Canceled = canceled
+		h.CancelReason = cancelReason
 	}
 	for id, history := range sm.history {
 		if time.Since(history.Start) > sm.historyDuration {
@@ -150,9 +153,9 @@ func (sm *Manager) recordSessionEnd(sessionID string) {
 	}
 }
 
-// GetSessionHistory returns a map of session ID to History entries
+// AllSessionHistory returns a map of session ID to History entries
 // earthly-specific
-func (sm *Manager) GetSessionHistory() map[string]*History {
+func (sm *Manager) AllSessionHistory() map[string]*History {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	historyCopy := make(map[string]*History)
@@ -163,12 +166,20 @@ func (sm *Manager) GetSessionHistory() map[string]*History {
 	return historyCopy
 }
 
-var (
-	ErrNotFound    = errors.New("session not found")
-	ErrForceCancel = errors.New("session cancellation forced externally")
-)
+var ErrNotFound = errors.New("session not found")
 
-func (sm *Manager) CancelSession(sessionID string) error {
+func (sm *Manager) GetSessionFromHistory(sessionID string) (*History, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	for id, history := range sm.history {
+		if id == sessionID {
+			return history, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (sm *Manager) CancelSession(sessionID, reason string) error {
 	sm.mu.Lock()
 	var session *Session
 	for id, s := range sm.sessions {
@@ -180,12 +191,11 @@ func (sm *Manager) CancelSession(sessionID string) error {
 	if session == nil {
 		return ErrNotFound
 	}
+	session.mu.Lock()
 	session.forceCancel = true
+	session.forceCancelReason = reason
 	session.cancelCtx()
-
-	//if err != nil {
-	//	return errors.Wrap(err, "failed canceling active session")
-	//}
+	session.mu.Unlock()
 	return nil
 }
 
@@ -295,17 +305,10 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 			sm.idleAt = time.Now() // earthly-specific
 		}
 		sm.mu.Unlock()
-		sm.recordSessionEnd(id) // earthly-specific
+		sm.recordSessionEnd(id, c.Session.forceCancel, c.Session.forceCancelReason) // earthly-specific
 	}()
 
 	<-c.ctx.Done()
-
-	// earthly-specific
-	if c.Session.forceCancel {
-		_, err = conn.Write([]byte("force cancel"))
-		fmt.Println(err)
-	}
-
 	conn.Close()
 	close(c.done)
 
@@ -337,6 +340,12 @@ func (sm *Manager) Get(ctx context.Context, id string, noWait bool) (Caller, err
 		select {
 		case <-ctx.Done():
 			sm.mu.Unlock()
+			// earthly-specific
+			h, err := sm.GetSessionFromHistory(id)
+			if err == nil && h.Canceled {
+				return nil, errors.Errorf("session force-canceled: %s", h.CancelReason)
+			}
+			// end earthly-specific
 			return nil, errors.Wrapf(ctx.Err(), "no active session for %s", id)
 		default:
 		}

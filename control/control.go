@@ -582,7 +582,7 @@ func (c *Controller) Reserve(ctx context.Context, r *controlapi.ReserveRequest) 
 }
 
 func (c *Controller) SessionHistory(ctx context.Context, r *controlapi.SessionHistoryRequest) (*controlapi.SessionHistoryResponse, error) {
-	history := c.opt.SessionManager.GetSessionHistory()
+	history := c.opt.SessionManager.AllSessionHistory()
 	var resp []*controlapi.SessionHistoryResponse_History
 	for id, h := range history {
 		resp = append(resp, &controlapi.SessionHistoryResponse_History{
@@ -595,7 +595,7 @@ func (c *Controller) SessionHistory(ctx context.Context, r *controlapi.SessionHi
 }
 
 func (c *Controller) CancelSession(ctx context.Context, r *controlapi.CancelSessionRequest) (*controlapi.CancelSessionResponse, error) {
-	err := c.opt.SessionManager.CancelSession(r.SessionID)
+	err := c.opt.SessionManager.CancelSession(r.SessionID, r.Reason)
 	if err != nil {
 		if errors.Is(err, session.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "session with id '%s' not found", r.SessionID)

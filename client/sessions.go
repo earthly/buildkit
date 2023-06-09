@@ -16,9 +16,10 @@ func (c *Client) SessionHistory(ctx context.Context) ([]*controlapi.SessionHisto
 	return res.History, nil
 }
 
-func (c *Client) CancelSession(ctx context.Context, sessionID string) error {
+func (c *Client) CancelSession(ctx context.Context, sessionID, reason string) error {
 	_, err := c.ControlClient().CancelSession(ctx, &controlapi.CancelSessionRequest{
 		SessionID: sessionID,
+		Reason:    reason,
 	})
 	if err != nil {
 		return errors.WithStack(err)
