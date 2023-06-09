@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -255,8 +256,8 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 		return errors.New("shutting down")
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	opts = canonicalHeaders(opts)
 
@@ -273,12 +274,13 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 
 	c := &client{
 		Session: Session{
-			id:        id,
-			name:      name,
-			sharedKey: sharedKey,
-			ctx:       ctx,
-			cancelCtx: cancel,
-			done:      make(chan struct{}),
+			id:             id,
+			name:           name,
+			sharedKey:      sharedKey,
+			ctx:            ctx,
+			cancelCtx:      func() { cancel(nil) },
+			cancelCauseCtx: cancel,
+			done:           make(chan struct{}),
 		},
 		cc:        cc,
 		supported: make(map[string]struct{}),
@@ -303,9 +305,9 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	}()
 
 	<-c.ctx.Done()
+	fmt.Printf("context done: %v", c.ctx.Err())
 	conn.Close()
 	close(c.done)
-
 	return nil
 }
 
