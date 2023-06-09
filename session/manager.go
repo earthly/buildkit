@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -297,6 +298,12 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	}()
 
 	<-c.ctx.Done()
+
+	if c.ctx.Err() == ErrForceCancel {
+		_, err = conn.Write([]byte("force cancel"))
+		fmt.Println(err)
+	}
+
 	conn.Close()
 	close(c.done)
 
