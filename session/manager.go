@@ -162,7 +162,10 @@ func (sm *Manager) GetSessionHistory() map[string]*History {
 	return historyCopy
 }
 
-var ErrNotFound = errors.New("session not found")
+var (
+	ErrNotFound    = errors.New("session not found")
+	ErrForceCancel = errors.New("session cancellation forced externally")
+)
 
 func (sm *Manager) CancelSession(sessionID string) error {
 	sm.mu.Lock()
@@ -176,7 +179,8 @@ func (sm *Manager) CancelSession(sessionID string) error {
 	if session == nil {
 		return ErrNotFound
 	}
-	session.cancelCtx()
+	_, cancel := context.WithCancelCause(session.ctx)
+	cancel(ErrForceCancel)
 	//if err != nil {
 	//	return errors.Wrap(err, "failed canceling active session")
 	//}
