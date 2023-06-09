@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -344,7 +343,6 @@ func (sm *Manager) Get(ctx context.Context, id string, noWait bool) (Caller, err
 			sm.mu.Unlock()
 			// earthly-specific
 			h, err := sm.GetSessionFromHistory(id)
-			fmt.Printf("!?!?!? %+v %v\n", h, err)
 			if err == nil && h.Canceled {
 				return nil, errors.Errorf("session force-canceled: %s", h.CancelReason)
 			}
