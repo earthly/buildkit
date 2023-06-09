@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -138,13 +139,11 @@ func (sm *Manager) recordSessionStart(sessionID string) {
 }
 
 // earthly-specific
-func (sm *Manager) recordSessionEnd(sessionID string, canceled bool, cancelReason string) {
+func (sm *Manager) recordSessionEnd(sessionID string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	if h := sm.history[sessionID]; h != nil {
 		h.End = time.Now()
-		h.Canceled = canceled
-		h.CancelReason = cancelReason
 	}
 	for id, history := range sm.history {
 		if time.Since(history.Start) > sm.historyDuration {
@@ -181,21 +180,24 @@ func (sm *Manager) GetSessionFromHistory(sessionID string) (*History, error) {
 
 func (sm *Manager) CancelSession(sessionID, reason string) error {
 	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	var session *Session
 	for id, s := range sm.sessions {
 		if id == sessionID {
 			session = &s.Session
 		}
 	}
-	sm.mu.Unlock()
 	if session == nil {
 		return ErrNotFound
 	}
-	session.mu.Lock()
-	session.forceCancel = true
-	session.forceCancelReason = reason
+	for id, history := range sm.history {
+		if id == sessionID {
+			history.Canceled = true
+			history.CancelReason = reason
+			break
+		}
+	}
 	session.cancelCtx()
-	session.mu.Unlock()
 	return nil
 }
 
@@ -305,7 +307,7 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 			sm.idleAt = time.Now() // earthly-specific
 		}
 		sm.mu.Unlock()
-		sm.recordSessionEnd(id, c.Session.forceCancel, c.Session.forceCancelReason) // earthly-specific
+		sm.recordSessionEnd(id) // earthly-specific
 	}()
 
 	<-c.ctx.Done()
@@ -342,6 +344,7 @@ func (sm *Manager) Get(ctx context.Context, id string, noWait bool) (Caller, err
 			sm.mu.Unlock()
 			// earthly-specific
 			h, err := sm.GetSessionFromHistory(id)
+			fmt.Printf("!?!?!? %+v %s\n", h, err.Error())
 			if err == nil && h.Canceled {
 				return nil, errors.Errorf("session force-canceled: %s", h.CancelReason)
 			}
