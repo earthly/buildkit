@@ -169,33 +169,26 @@ var ErrNotFound = errors.New("session not found")
 func (sm *Manager) GetSessionFromHistory(sessionID string) (*History, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	for id, history := range sm.history {
-		if id == sessionID {
-			return history, nil
-		}
+	history := sm.history[sessionID]
+	if history == nil {
+		return nil, ErrNotFound
 	}
-	return nil, ErrNotFound
+	return history, nil
 }
 
 func (sm *Manager) CancelSession(sessionID, reason string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	var session *Session
-	for id, s := range sm.sessions {
-		if id == sessionID {
-			session = &s.Session
-		}
-	}
+	session := sm.sessions[sessionID]
 	if session == nil {
 		return ErrNotFound
 	}
-	for id, history := range sm.history {
-		if id == sessionID {
-			history.Canceled = true
-			history.CancelReason = reason
-			break
-		}
+	history := sm.history[sessionID]
+	if history == nil {
+		return ErrNotFound
 	}
+	history.Canceled = true
+	history.CancelReason = reason
 	session.cancelCtx()
 	return nil
 }
