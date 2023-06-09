@@ -180,8 +180,9 @@ func (sm *Manager) CancelSession(sessionID string) error {
 	if session == nil {
 		return ErrNotFound
 	}
-	_, cancel := context.WithCancelCause(session.ctx)
-	cancel(ErrForceCancel)
+	session.forceCancel = true
+	session.cancelCtx()
+
 	//if err != nil {
 	//	return errors.Wrap(err, "failed canceling active session")
 	//}
@@ -299,7 +300,8 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 
 	<-c.ctx.Done()
 
-	if c.ctx.Err() == ErrForceCancel {
+	// earthly-specific
+	if c.Session.forceCancel {
 		_, err = conn.Write([]byte("force cancel"))
 		fmt.Println(err)
 	}

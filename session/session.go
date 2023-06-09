@@ -47,6 +47,7 @@ type Session struct {
 	grpcServer  *grpc.Server
 	conn        net.Conn
 	closeCalled bool
+	forceCancel bool // earthly-specific
 }
 
 // NewSession returns a new long running session
