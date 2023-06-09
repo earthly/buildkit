@@ -176,10 +176,10 @@ func (sm *Manager) CancelSession(sessionID string) error {
 	if session == nil {
 		return ErrNotFound
 	}
-	err := session.Close()
-	if err != nil {
-		return errors.Wrap(err, "failed canceling active session")
-	}
+	session.cancelCtx()
+	//if err != nil {
+	//	return errors.Wrap(err, "failed canceling active session")
+	//}
 	return nil
 }
 

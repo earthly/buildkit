@@ -598,7 +598,7 @@ func (c *Controller) CancelSession(ctx context.Context, r *controlapi.CancelSess
 	err := c.opt.SessionManager.CancelSession(r.SessionID)
 	if err != nil {
 		if errors.Is(err, session.ErrNotFound) {
-			return nil, status.Errorf(codes.NotFound, "session with id '%' not found", r.SessionID)
+			return nil, status.Errorf(codes.NotFound, "session with id '%s' not found", r.SessionID)
 		}
 		return nil, status.Error(codes.Internal, "internal error")
 	}
