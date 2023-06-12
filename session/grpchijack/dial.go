@@ -92,8 +92,11 @@ func (c *conn) Write(b []byte) (int, error) {
 }
 
 func (c *conn) Close() (err error) {
+	fmt.Println("conn.Close")
 	c.closedOnce.Do(func() {
+		fmt.Println("Do")
 		defer func() {
+			fmt.Println("defer")
 			close(c.closeCh)
 		}()
 
@@ -105,6 +108,8 @@ func (c *conn) Close() (err error) {
 				return
 			}
 		}
+
+		fmt.Println("if cs, ok := c.stream.(grpc.ClientStream); ok {")
 
 		c.readMu.Lock()
 		for {
@@ -123,6 +128,8 @@ func (c *conn) Close() (err error) {
 			c.lastBuf = append(c.lastBuf, c.buf...)
 		}
 		c.readMu.Unlock()
+
+		fmt.Println("for {")
 	})
 	return nil
 }

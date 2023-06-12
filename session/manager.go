@@ -307,7 +307,6 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	fmt.Println("waiting for ctx done")
 	<-c.ctx.Done()
 	fmt.Println("ctx done")
-	fmt.Println(conn.SetDeadline(time.Now()))
 	conn.Close()
 	fmt.Println("conn close")
 	close(c.done)
