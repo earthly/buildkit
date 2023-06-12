@@ -78,7 +78,7 @@ func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthC
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	go configurableMonitorHealth(ctx, cc, cancel, healthCfg)
+	//go configurableMonitorHealth(ctx, cc, cancel, healthCfg)
 
 	return ctx, cc, func() { fmt.Println("cancel"); cancel() }, nil
 }
