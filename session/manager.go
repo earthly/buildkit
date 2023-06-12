@@ -190,7 +190,7 @@ func (sm *Manager) CancelSession(sessionID, reason string) error {
 	}
 	history.Canceled = true
 	history.CancelReason = reason
-	session.cancelCtx()
+	session.cancelCauseCtx(errors.New(reason))
 	return nil
 }
 
@@ -304,9 +304,11 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 		sm.recordSessionEnd(id) // earthly-specific
 	}()
 
+	fmt.Println("waiting for ctx done")
 	<-c.ctx.Done()
-	fmt.Printf("context done: %v", c.ctx.Err())
+	fmt.Println("ctx done")
 	conn.Close()
+	fmt.Println("conn close")
 	close(c.done)
 	return nil
 }
