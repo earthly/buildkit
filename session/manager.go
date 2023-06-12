@@ -266,7 +266,7 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	name := h.Get(headerSessionName)
 	sharedKey := h.Get(headerSessionSharedKey)
 
-	ctx, cc, err := grpcClientConn(ctx, conn, sm.healthCfg)
+	ctx, cc, cancelGrpc, err := grpcClientConn(ctx, conn, sm.healthCfg)
 	if err != nil {
 		sm.mu.Unlock()
 		return err
@@ -278,8 +278,8 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 			name:           name,
 			sharedKey:      sharedKey,
 			ctx:            ctx,
-			cancelCtx:      func() { cancel(nil) },
-			cancelCauseCtx: cancel,
+			cancelCtx:      func() { cancel(nil); cancelGrpc() },
+			cancelCauseCtx: func(e error) { cancel(e); cancelGrpc() },
 			done:           make(chan struct{}),
 		},
 		cc:        cc,
@@ -309,7 +309,7 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	fmt.Println("ctx done")
 	cc.Close()
 	fmt.Println("cc close")
-	//conn.Close()
+	conn.Close()
 	fmt.Println("conn close")
 	close(c.done)
 	return nil

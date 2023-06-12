@@ -30,7 +30,7 @@ func serve(ctx context.Context, grpcServer *grpc.Server, conn net.Conn) {
 	(&http2.Server{}).ServeConn(conn, &http2.ServeConnOpts{Handler: grpcServer})
 }
 
-func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthCfg) (context.Context, *grpc.ClientConn, error) {
+func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthCfg) (context.Context, *grpc.ClientConn, func(), error) {
 	var unary []grpc.UnaryClientInterceptor
 	var stream []grpc.StreamClientInterceptor
 
@@ -79,7 +79,7 @@ func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthC
 	ctx, cancel := context.WithCancel(ctx)
 	go configurableMonitorHealth(ctx, cc, cancel, healthCfg)
 
-	return ctx, cc, nil
+	return ctx, cc, cancel, nil
 }
 
 func monitorHealth(ctx context.Context, cc *grpc.ClientConn, cancelConn func()) {
