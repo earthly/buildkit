@@ -2,16 +2,18 @@ package grpchijack
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
-	controlapi "github.com/moby/buildkit/api/services/control"
-	"github.com/moby/buildkit/session"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	controlapi "github.com/moby/buildkit/api/services/control"
+	"github.com/moby/buildkit/session"
 )
 
 func Dialer(api controlapi.ControlClient) session.Dialer {
