@@ -3,7 +3,6 @@ package grpchijack
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
@@ -113,25 +112,24 @@ func (c *conn) Close() (err error) {
 
 		fmt.Println("if cs, ok := c.stream.(grpc.ClientStream); ok {")
 
-		c.readMu.Lock()
-		for {
-			m := new(controlapi.BytesMessage)
-			m.Data = c.buf
-			err = c.stream.RecvMsg(m)
-			if err != nil {
-				if err != io.EOF {
-					c.readMu.Unlock()
-					return
-				}
-				err = nil
-				break
-			}
-			c.buf = m.Data[:cap(m.Data)]
-			c.lastBuf = append(c.lastBuf, c.buf...)
-		}
-		c.readMu.Unlock()
-
-		fmt.Println("for {")
+		//c.readMu.Lock()
+		//for {
+		//	m := new(controlapi.BytesMessage)
+		//	m.Data = c.buf
+		//	err = c.stream.RecvMsg(m)
+		//	if err != nil {
+		//		if err != io.EOF {
+		//			c.readMu.Unlock()
+		//			return
+		//		}
+		//		err = nil
+		//		break
+		//	}
+		//	c.buf = m.Data[:cap(m.Data)]
+		//	c.lastBuf = append(c.lastBuf, c.buf...)
+		//}
+		//c.readMu.Unlock()
+		//fmt.Println("for {")
 	})
 	return nil
 }
