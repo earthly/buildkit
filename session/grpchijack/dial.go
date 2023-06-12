@@ -3,6 +3,7 @@ package grpchijack
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -111,6 +112,10 @@ func (c *conn) Close() (err error) {
 		}
 
 		fmt.Println("if cs, ok := c.stream.(grpc.ClientStream); ok {")
+
+		c.readMu.Lock()
+		_ = c.stream.SendMsg(io.EOF)
+		c.readMu.Unlock()
 
 		//c.readMu.Lock()
 		//for {
