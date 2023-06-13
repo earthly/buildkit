@@ -85,6 +85,11 @@ func (c *conn) Read(b []byte) (n int, err error) {
 }
 
 func (c *conn) Write(b []byte) (int, error) {
+	//if string(b) == "123" {
+	//	if s, ok := c.stream.(grpc.ServerStream); ok {
+	//
+	//	}
+	//}
 	fmt.Println("Write")
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
@@ -129,6 +134,7 @@ func (c *conn) Close() (err error) {
 					c.readMu.Unlock()
 					return
 				}
+				fmt.Println("err: " + err.Error())
 				err = nil
 				break
 			}

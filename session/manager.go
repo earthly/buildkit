@@ -191,6 +191,8 @@ func (sm *Manager) CancelSession(sessionID, reason string) error {
 	history.Canceled = true
 	history.CancelReason = reason
 	session.cancelCauseCtx(errors.New(reason))
+	//session.conn
+	//?if
 	return nil
 }
 
