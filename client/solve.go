@@ -240,7 +240,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 		frontendAttrs[k] = v
 	}
 
-	solveCtx, cancelSolve := context.WithCancel(ctx)
+	solveCtx, cancelSolve := context.WithCancel(statusContext)
 	var res *SolveResponse
 	eg.Go(func() error {
 		fmt.Println("solve")
