@@ -190,7 +190,7 @@ func (sm *Manager) CancelSession(sessionID, reason string) error {
 	}
 	history.Canceled = true
 	history.CancelReason = reason
-	fmt.Println(session.Close())
+	session.cancelCauseCtx(errors.New(reason))
 	return nil
 }
 
