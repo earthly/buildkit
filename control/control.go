@@ -488,7 +488,7 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	conn, closeCh, opts := grpchijack.Hijack(stream)
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(stream.Context(), time.Duration(10*time.Second))
+	ctx, cancel := context.WithCancel(stream.Context())
 	go func() {
 		<-closeCh
 		cancel()
