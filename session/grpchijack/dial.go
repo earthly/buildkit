@@ -56,6 +56,7 @@ type conn struct {
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
+	fmt.Println("Read")
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 
@@ -79,17 +80,19 @@ func (c *conn) Read(b []byte) (n int, err error) {
 	if n < len(m.Data) {
 		c.lastBuf = m.Data[n:]
 	}
-
+	fmt.Println("done Read")
 	return n, nil
 }
 
 func (c *conn) Write(b []byte) (int, error) {
+	fmt.Println("Write")
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	m := &controlapi.BytesMessage{Data: b}
 	if err := c.stream.SendMsg(m); err != nil {
 		return 0, err
 	}
+	fmt.Println("done Write")
 	return len(b), nil
 }
 
@@ -113,6 +116,7 @@ func (c *conn) Close() (err error) {
 			fmt.Println("sent CloseSend")
 		}
 
+		fmt.Println("trying to lock")
 		c.readMu.Lock()
 		for {
 			fmt.Println("receiving stream msg")
