@@ -107,8 +107,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 	}
 	eg, ctx := errgroup.WithContext(ctx)
 
-	//statusContext, cancelStatus := context.WithCancel(context.Background())
-	statusContext, cancelStatus := context.WithCancel(ctx)
+	statusContext, cancelStatus := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelStatus()
 
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
