@@ -2,13 +2,12 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/moby/buildkit/identity"
-	"github.com/moby/buildkit/util/grpcerrors"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -16,6 +15,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/moby/buildkit/identity"
+	"github.com/moby/buildkit/util/grpcerrors"
 )
 
 const (
@@ -108,6 +110,7 @@ func (s *Session) ID() string {
 
 // Run activates the session
 func (s *Session) Run(ctx context.Context, dialer Dialer) error {
+	fmt.Println("Run")
 	s.mu.Lock()
 	if s.closeCalled {
 		s.mu.Unlock()

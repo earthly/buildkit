@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -241,6 +242,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 	solveCtx, cancelSolve := context.WithCancel(ctx)
 	var res *SolveResponse
 	eg.Go(func() error {
+		fmt.Println("solve")
 		ctx := solveCtx
 		defer cancelSolve()
 
@@ -288,10 +290,12 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 		res = &SolveResponse{
 			ExporterResponse: resp.ExporterResponse,
 		}
+		fmt.Println("solve done")
 		return nil
 	})
 
 	if runGateway != nil {
+		fmt.Println("runGateway")
 		eg.Go(func() error {
 			err := runGateway(ref, s, frontendAttrs)
 			if err == nil {
