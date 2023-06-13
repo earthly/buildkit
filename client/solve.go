@@ -92,8 +92,6 @@ func (c *Client) Solve(ctx context.Context, def *llb.Definition, opt SolveOpt, s
 type runGatewayCB func(ref string, s *session.Session, opts map[string]string) error
 
 func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runGatewayCB, opt SolveOpt, statusChan chan *SolveStatus) (*SolveResponse, error) {
-	ctx, cancelMain := context.WithTimeout(ctx, time.Second*10)
-	defer cancelMain()
 	if def != nil && runGateway != nil {
 		return nil, errors.New("invalid with def and cb")
 	}
@@ -109,7 +107,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 	}
 	eg, ctx := errgroup.WithContext(ctx)
 
-	statusContext, cancelStatus := context.WithCancel(ctx)
+	statusContext, cancelStatus := context.WithCancel(context.Background())
 	defer cancelStatus()
 
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {

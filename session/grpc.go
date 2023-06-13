@@ -32,6 +32,30 @@ func serve(ctx context.Context, grpcServer *grpc.Server, conn net.Conn) {
 	(&http2.Server{}).ServeConn(conn, &http2.ServeConnOpts{Handler: grpcServer})
 }
 
+func unaryInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		err := invoker(ctx, method, req, reply, cc, opts...)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+func streamInterceptor() grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		newStreamer, err := streamer(ctx, desc, cc, method, opts...)
+		if err != nil {
+			return newStreamer, err
+		}
+		return newStreamer, nil
+	}
+}
+
 func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthCfg) (context.Context, *grpc.ClientConn, func(), error) {
 	var unary []grpc.UnaryClientInterceptor
 	var stream []grpc.StreamClientInterceptor
@@ -51,6 +75,8 @@ func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthC
 		grpc.WithInitialConnWindowSize(65535 * 16),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(defaults.DefaultMaxRecvMsgSize)),
 		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(defaults.DefaultMaxSendMsgSize)),
+		grpc.WithChainStreamInterceptor(streamInterceptor()),
+		grpc.WithChainUnaryInterceptor(unaryInterceptor()),
 	}
 
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
