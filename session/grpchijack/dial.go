@@ -103,36 +103,38 @@ func (c *conn) Close() (err error) {
 		}()
 
 		if cs, ok := c.stream.(grpc.ClientStream); ok {
-			fmt.Println("close send")
+			fmt.Println("grpc.ClientStream")
 			c.writeMu.Lock()
 			err = cs.CloseSend()
 			c.writeMu.Unlock()
 			if err != nil {
 				return
 			}
+			fmt.Println("sent CloseSend")
 		}
-
-		fmt.Println("if cs, ok := c.stream.(grpc.ClientStream); ok {")
 
 		c.readMu.Lock()
 		for {
+			fmt.Println("receiving stream msg")
 			m := new(controlapi.BytesMessage)
 			m.Data = c.buf
 			err = c.stream.RecvMsg(m)
 			if err != nil {
 				if err != io.EOF {
+					fmt.Println("EOF")
 					c.readMu.Unlock()
 					return
 				}
 				err = nil
 				break
 			}
+			fmt.Println("m.Data: " + string(m.Data))
 			c.buf = m.Data[:cap(m.Data)]
 			c.lastBuf = append(c.lastBuf, c.buf...)
 		}
 		c.readMu.Unlock()
-		fmt.Println("for {")
 	})
+	fmt.Println("done conn.Close()")
 	return nil
 }
 
