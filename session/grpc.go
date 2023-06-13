@@ -35,8 +35,7 @@ func serve(ctx context.Context, grpcServer *grpc.Server, conn net.Conn) {
 func unaryInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		fmt.Println("unary middleware")
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
+		ctx, _ = context.WithTimeout(ctx, 10*time.Second)
 		err := invoker(ctx, method, req, reply, cc, opts...)
 		if err != nil {
 			return err
@@ -47,9 +46,8 @@ func unaryInterceptor() grpc.UnaryClientInterceptor {
 
 func streamInterceptor() grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ctx, _ = context.WithTimeout(ctx, 10*time.Second)
 		fmt.Println("stream middleware")
-		defer cancel()
 		newStreamer, err := streamer(ctx, desc, cc, method, opts...)
 		if err != nil {
 			return newStreamer, err
