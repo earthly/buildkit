@@ -34,6 +34,7 @@ func serve(ctx context.Context, grpcServer *grpc.Server, conn net.Conn) {
 
 func unaryInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		fmt.Println("unary middleware")
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		err := invoker(ctx, method, req, reply, cc, opts...)
@@ -47,6 +48,7 @@ func unaryInterceptor() grpc.UnaryClientInterceptor {
 func streamInterceptor() grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		fmt.Println("stream middleware")
 		defer cancel()
 		newStreamer, err := streamer(ctx, desc, cc, method, opts...)
 		if err != nil {
@@ -57,6 +59,7 @@ func streamInterceptor() grpc.StreamClientInterceptor {
 }
 
 func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthCfg) (context.Context, *grpc.ClientConn, func(), error) {
+	ctx, cancel := context.WithCancel(ctx)
 	var unary []grpc.UnaryClientInterceptor
 	var stream []grpc.StreamClientInterceptor
 
@@ -75,9 +78,11 @@ func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthC
 		grpc.WithInitialConnWindowSize(65535 * 16),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(defaults.DefaultMaxRecvMsgSize)),
 		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(defaults.DefaultMaxSendMsgSize)),
-		grpc.WithChainStreamInterceptor(streamInterceptor()),
-		grpc.WithChainUnaryInterceptor(unaryInterceptor()),
+		//grpc.WithChainStreamInterceptor(streamInterceptor()),
+		//grpc.WithChainUnaryInterceptor(unaryInterceptor()),
 	}
+	unary = append(unary, unaryInterceptor())
+	stream = append(stream, streamInterceptor())
 
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		unary = append(unary, filterClient(otelgrpc.UnaryClientInterceptor(otelgrpc.WithTracerProvider(span.TracerProvider()), otelgrpc.WithPropagators(propagators))))
@@ -101,10 +106,10 @@ func grpcClientConn(ctx context.Context, conn net.Conn, healthCfg ManagerHealthC
 
 	cc, err := grpc.DialContext(ctx, "localhost", dialOpts...)
 	if err != nil {
+		cancel()
 		return nil, nil, nil, errors.Wrap(err, "failed to create grpc client")
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	//go configurableMonitorHealth(ctx, cc, cancel, healthCfg)
 
 	return ctx, cc, func() { fmt.Println("cancel"); cancel() }, nil
