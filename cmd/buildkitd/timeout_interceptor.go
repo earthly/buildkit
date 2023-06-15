@@ -56,7 +56,7 @@ func streamTimeoutInterceptor() grpc.StreamServerInterceptor {
 			done := make(chan bool)
 			defer close(done)
 			go handleTimeout(done, cancel)
-			err := handler(srv, newWrappedStream(stream, ctx))
+			err := handler(srv, stream)
 			if errors.Is(err, context.Canceled) && context.Cause(ctx) == errSessionTimeout {
 				return errors.Errorf("build exceeded max duration of %s", sessionTimeout.String())
 			}
