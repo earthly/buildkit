@@ -247,8 +247,12 @@ func main() {
 
 		streamTracer := otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp), otelgrpc.WithPropagators(propagators))
 
-		unary := grpc_middleware.ChainUnaryServer(unaryInterceptor(ctx, tp), grpcerrors.UnaryServerInterceptor)
-		stream := grpc_middleware.ChainStreamServer(streamTracer, grpcerrors.StreamServerInterceptor)
+		unary := grpc_middleware.ChainUnaryServer(unaryInterceptor(ctx, tp), grpcerrors.UnaryServerInterceptor,
+			unaryTimeoutInterceptor(), // earthly-specific
+		)
+		stream := grpc_middleware.ChainStreamServer(streamTracer, grpcerrors.StreamServerInterceptor,
+			streamTimeoutInterceptor(), // earthly-specific
+		)
 
 		maxMsgSize := 67108864 // 64MB
 		opts := []grpc.ServerOption{
