@@ -5,6 +5,7 @@ import (
 	"runtime/debug"
 
 	"github.com/containerd/containerd/log"
+	"github.com/moby/buildkit/version"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -50,6 +51,12 @@ func GetLogger(ctx context.Context) (l *logrus.Entry) {
 	} else {
 		l = L
 	}
+
+	// earthly-specific
+	l = l.WithFields(logrus.Fields{
+		"version":  version.Version,
+		"revision": version.Revision,
+	})
 
 	if logWithTraceID {
 		if spanContext := trace.SpanFromContext(ctx).SpanContext(); spanContext.IsValid() {
