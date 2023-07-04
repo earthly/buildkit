@@ -1,4 +1,4 @@
-package gateway
+package container
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/moby/buildkit/session/secrets"
 	"github.com/moby/buildkit/util/bklog"
 
 	"github.com/moby/buildkit/cache"
@@ -18,6 +19,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/snapshot"
 	"github.com/moby/buildkit/solver/llbsolver/mounts"
+	"github.com/moby/buildkit/solver/pb"
 	opspb "github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/stack"
 	utilsystem "github.com/moby/buildkit/util/system"
@@ -61,6 +63,8 @@ func NewContainer(ctx context.Context, w worker.Worker, sm *session.Manager, g s
 		extraHosts: req.ExtraHosts,
 		platform:   platform,
 		executor:   w.Executor(),
+		sm:         sm,
+		group:      g,
 		errGroup:   eg,
 		ctx:        ctx,
 		cancel:     cancel,
@@ -269,9 +273,9 @@ func PrepareMounts(ctx context.Context, mm *mounts.MountManager, cm cache.Manage
 				})
 				root = active
 			}
-			p.Root = mountWithSession(root, g)
+			p.Root = MountWithSession(root, g)
 		} else {
-			mws := mountWithSession(mountable, g)
+			mws := MountWithSession(mountable, g)
 			dest := m.Dest
 			if !filepath.IsAbs(filepath.Clean(dest)) {
 				dest = filepath.Join("/", cwd, dest)
@@ -300,6 +304,8 @@ type gatewayContainer struct {
 	rootFS     executor.Mount
 	mounts     []executor.Mount
 	executor   executor.Executor
+	sm         *session.Manager
+	group      session.Group
 	started    bool
 	errGroup   *errgroup.Group
 	mu         sync.Mutex
@@ -308,7 +314,7 @@ type gatewayContainer struct {
 	cancel     func()
 }
 
-func (gwCtr *gatewayContainer) Start(_ context.Context, req client.StartRequest) (client.ContainerProcess, error) {
+func (gwCtr *gatewayContainer) Start(ctx context.Context, req client.StartRequest) (client.ContainerProcess, error) {
 	resize := make(chan executor.WinSize)
 	signal := make(chan syscall.Signal)
 	procInfo := executor.ProcessInfo{
@@ -338,6 +344,12 @@ func (gwCtr *gatewayContainer) Start(_ context.Context, req client.StartRequest)
 		procInfo.Meta.Env = addDefaultEnvvar(procInfo.Meta.Env, "TERM", "xterm")
 	}
 
+	secretEnv, err := gwCtr.loadSecretEnv(ctx, req.SecretEnv)
+	if err != nil {
+		return nil, err
+	}
+	procInfo.Meta.Env = append(procInfo.Meta.Env, secretEnv...)
+
 	// mark that we have started on the first call to execProcess for this
 	// container, so that future calls will call Exec rather than Run
 	gwCtr.mu.Lock()
@@ -357,7 +369,7 @@ func (gwCtr *gatewayContainer) Start(_ context.Context, req client.StartRequest)
 		startedCh := make(chan struct{})
 		gwProc.errGroup.Go(func() error {
 			bklog.G(gwCtr.ctx).Debugf("Starting new container for %s with args: %q", gwCtr.id, procInfo.Meta.Args)
-			err := gwCtr.executor.Run(ctx, gwCtr.id, gwCtr.rootFS, gwCtr.mounts, procInfo, startedCh)
+			_, err := gwCtr.executor.Run(ctx, gwCtr.id, gwCtr.rootFS, gwCtr.mounts, procInfo, startedCh)
 			return stack.Enable(err)
 		})
 		select {
@@ -375,6 +387,33 @@ func (gwCtr *gatewayContainer) Start(_ context.Context, req client.StartRequest)
 	gwCtr.errGroup.Go(gwProc.errGroup.Wait)
 
 	return gwProc, nil
+}
+
+func (gwCtr *gatewayContainer) loadSecretEnv(ctx context.Context, secretEnv []*pb.SecretEnv) ([]string, error) {
+	out := make([]string, 0, len(secretEnv))
+	for _, sopt := range secretEnv {
+		id := sopt.ID
+		if id == "" {
+			return nil, errors.Errorf("secret ID missing for %q environment variable", sopt.Name)
+		}
+		var dt []byte
+		var err error
+		err = gwCtr.sm.Any(ctx, gwCtr.group, func(ctx context.Context, _ string, caller session.Caller) error {
+			dt, err = secrets.GetSecret(ctx, caller, id)
+			if err != nil {
+				if errors.Is(err, secrets.ErrNotFound) && sopt.Optional {
+					return nil
+				}
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, fmt.Sprintf("%s=%s", sopt.Name, string(dt)))
+	}
+	return out, nil
 }
 
 func (gwCtr *gatewayContainer) Release(ctx context.Context) error {
@@ -474,7 +513,7 @@ func addDefaultEnvvar(env []string, k, v string) []string {
 	return append(env, k+"="+v)
 }
 
-func mountWithSession(m cache.Mountable, g session.Group) executor.Mount {
+func MountWithSession(m cache.Mountable, g session.Group) executor.Mount {
 	_, readonly := m.(cache.ImmutableRef)
 	return executor.Mount{
 		Src:      &mountable{m: m, g: g},

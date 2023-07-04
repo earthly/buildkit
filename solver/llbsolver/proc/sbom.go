@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/executor/resources"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/frontend"
 	"github.com/moby/buildkit/frontend/attestations/sbom"
@@ -13,8 +14,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-func SBOMProcessor(scannerRef string, useCache bool) llbsolver.Processor {
-	return func(ctx context.Context, res *llbsolver.Result, s *llbsolver.Solver, j *solver.Job) (*llbsolver.Result, error) {
+func SBOMProcessor(scannerRef string, useCache bool, resolveMode string) llbsolver.Processor {
+	return func(ctx context.Context, res *llbsolver.Result, s *llbsolver.Solver, j *solver.Job, usage *resources.SysSampler) (*llbsolver.Result, error) {
 		// skip sbom generation if we already have an sbom
 		if sbom.HasSBOM(res.Result) {
 			return res, nil
@@ -25,7 +26,9 @@ func SBOMProcessor(scannerRef string, useCache bool) llbsolver.Processor {
 			return nil, err
 		}
 
-		scanner, err := sbom.CreateSBOMScanner(ctx, s.Bridge(j), scannerRef)
+		scanner, err := sbom.CreateSBOMScanner(ctx, s.Bridge(j), scannerRef, llb.ResolveImageConfigOpt{
+			ResolveMode: resolveMode,
+		})
 		if err != nil {
 			return nil, err
 		}

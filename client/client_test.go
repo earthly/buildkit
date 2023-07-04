@@ -29,6 +29,7 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/content/local"
+	"github.com/containerd/containerd/content/proxy"
 	ctderrdefs "github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/namespaces"
@@ -182,12 +183,14 @@ func TestIntegration(t *testing.T) {
 		testExportAnnotations,
 		testExportAnnotationsMediaTypes,
 		testExportAttestations,
+		testExportedImageLabels,
 		testAttestationDefaultSubject,
 		testSourceDateEpochLayerTimestamps,
 		testSourceDateEpochClamp,
 		testSourceDateEpochReset,
 		testSourceDateEpochLocalExporter,
 		testSourceDateEpochTarExporter,
+		testSourceDateEpochImageExporter,
 		testAttestationBundle,
 		testSBOMScan,
 		testSBOMScanSingleRef,
@@ -200,6 +203,8 @@ func TestIntegration(t *testing.T) {
 		testLLBMountPerformance,
 		testClientCustomGRPCOpts,
 		testMultipleRecordsWithSameLayersCacheImportExport,
+		testExportLocalNoPlatformSplit,
+		testExportLocalNoPlatformSplitOverwrite,
 	)
 }
 
@@ -382,6 +387,134 @@ func testHostNetworking(t *testing.T, sb integration.Sandbox) {
 	} else {
 		require.Error(t, err)
 	}
+}
+
+func testExportedImageLabels(t *testing.T, sb integration.Sandbox) {
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	cdAddress := sb.ContainerdAddress()
+	if cdAddress == "" {
+		t.Skip("only supported with containerd")
+	}
+
+	ctx := sb.Context()
+
+	def, err := llb.Image("busybox").Run(llb.Shlexf("echo foo > /foo")).Marshal(ctx)
+	require.NoError(t, err)
+
+	target := "docker.io/buildkit/build/exporter:labels"
+
+	_, err = c.Solve(ctx, def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type: ExporterImage,
+				Attrs: map[string]string{
+					"name": target,
+				},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	client, err := newContainerd(cdAddress)
+	require.NoError(t, err)
+	defer client.Close()
+
+	ctx = namespaces.WithNamespace(ctx, "buildkit")
+
+	img, err := client.GetImage(ctx, target)
+	require.NoError(t, err)
+
+	store := client.ContentStore()
+
+	info, err := store.Info(ctx, img.Target().Digest)
+	require.NoError(t, err)
+
+	dt, err := content.ReadBlob(ctx, store, img.Target())
+	require.NoError(t, err)
+
+	var mfst ocispecs.Manifest
+	err = json.Unmarshal(dt, &mfst)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, len(mfst.Layers))
+
+	hasLabel := func(dgst digest.Digest) bool {
+		for k, v := range info.Labels {
+			if strings.HasPrefix(k, "containerd.io/gc.ref.content.") && v == dgst.String() {
+				return true
+			}
+		}
+		return false
+	}
+
+	// check that labels are set on all layers and config
+	for _, l := range mfst.Layers {
+		require.True(t, hasLabel(l.Digest))
+	}
+	require.True(t, hasLabel(mfst.Config.Digest))
+
+	err = c.Prune(sb.Context(), nil, PruneAll)
+	require.NoError(t, err)
+
+	// layer should not be deleted
+	_, err = store.Info(ctx, mfst.Layers[1].Digest)
+	require.NoError(t, err)
+
+	err = client.ImageService().Delete(ctx, target, images.SynchronousDelete())
+	require.NoError(t, err)
+
+	// layers should be deleted
+	_, err = store.Info(ctx, mfst.Layers[1].Digest)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ctderrdefs.ErrNotFound))
+
+	// config should be deleted
+	_, err = store.Info(ctx, mfst.Config.Digest)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ctderrdefs.ErrNotFound))
+
+	// buildkit contentstore still has the layer because it is multi-ns
+	bkstore := proxy.NewContentStore(c.ContentClient())
+
+	// layer should be deleted as not kept by history
+	_, err = bkstore.Info(ctx, mfst.Layers[1].Digest)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+
+	// config should still be there
+	_, err = bkstore.Info(ctx, img.Metadata().Target.Digest)
+	require.NoError(t, err)
+
+	_, err = bkstore.Info(ctx, mfst.Config.Digest)
+	require.NoError(t, err)
+
+	cl, err := c.ControlClient().ListenBuildHistory(sb.Context(), &controlapi.BuildHistoryRequest{
+		EarlyExit: true,
+	})
+	require.NoError(t, err)
+
+	for {
+		resp, err := cl.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		_, err = c.ControlClient().UpdateBuildHistory(sb.Context(), &controlapi.UpdateBuildHistoryRequest{
+			Ref:    resp.Record.Ref,
+			Delete: true,
+		})
+		require.NoError(t, err)
+	}
+
+	// now everything should be deleted
+	_, err = bkstore.Info(ctx, img.Metadata().Target.Digest)
+	require.Error(t, err)
+
+	_, err = bkstore.Info(ctx, mfst.Config.Digest)
+	require.Error(t, err)
 }
 
 // #877
@@ -2923,6 +3056,66 @@ func testSourceDateEpochTarExporter(t *testing.T, sb integration.Sandbox) {
 
 	checkAllReleasable(t, c, sb, true)
 }
+
+func testSourceDateEpochImageExporter(t *testing.T, sb integration.Sandbox) {
+	cdAddress := sb.ContainerdAddress()
+	if cdAddress == "" {
+		t.SkipNow()
+	}
+	// https://github.com/containerd/containerd/commit/133ddce7cf18a1db175150e7a69470dea1bb3132
+	integration.CheckContainerdVersion(t, cdAddress, ">= 1.7.0-beta.1")
+
+	integration.CheckFeatureCompat(t, sb, integration.FeatureSourceDateEpoch)
+	requiresLinux(t)
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+
+	busybox := llb.Image("busybox:latest")
+	st := llb.Scratch()
+
+	run := func(cmd string) {
+		st = busybox.Run(llb.Shlex(cmd), llb.Dir("/wd")).AddMount("/wd", st)
+	}
+
+	run(`sh -c "echo -n first > foo"`)
+	run(`sh -c "echo -n second > bar"`)
+
+	def, err := st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	name := strings.ToLower(path.Base(t.Name()))
+	tm := time.Date(2015, time.October, 21, 7, 28, 0, 0, time.UTC)
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		FrontendAttrs: map[string]string{
+			"build-arg:SOURCE_DATE_EPOCH": fmt.Sprintf("%d", tm.Unix()),
+		},
+		Exports: []ExportEntry{
+			{
+				Type: ExporterImage,
+				Attrs: map[string]string{
+					"name": name,
+				},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	ctx := namespaces.WithNamespace(sb.Context(), "buildkit")
+	client, err := newContainerd(cdAddress)
+	require.NoError(t, err)
+	defer client.Close()
+
+	img, err := client.GetImage(ctx, name)
+	require.NoError(t, err)
+	require.Equal(t, tm, img.Metadata().CreatedAt)
+
+	err = client.ImageService().Delete(ctx, name, images.SynchronousDelete())
+	require.NoError(t, err)
+
+	checkAllReleasable(t, c, sb, true)
+}
+
 func testFrontendMetadataReturn(t *testing.T, sb integration.Sandbox) {
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
@@ -5249,6 +5442,152 @@ func testMultipleRecordsWithSameLayersCacheImportExport(t *testing.T, sb integra
 	ensurePruneAll(t, c, sb)
 }
 
+func testExportLocalNoPlatformSplit(t *testing.T, sb integration.Sandbox) {
+	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureMultiPlatform)
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	platformsToTest := []string{"linux/amd64", "linux/arm64"}
+	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		res := gateway.NewResult()
+		expPlatforms := &exptypes.Platforms{
+			Platforms: make([]exptypes.Platform, len(platformsToTest)),
+		}
+		for i, platform := range platformsToTest {
+			st := llb.Scratch().File(
+				llb.Mkfile("hello-"+strings.ReplaceAll(platform, "/", "-"), 0600, []byte(platform)),
+			)
+
+			def, err := st.Marshal(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			r, err := c.Solve(ctx, gateway.SolveRequest{
+				Definition: def.ToPB(),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			ref, err := r.SingleRef()
+			if err != nil {
+				return nil, err
+			}
+
+			_, err = ref.ToState()
+			if err != nil {
+				return nil, err
+			}
+			res.AddRef(platform, ref)
+
+			expPlatforms.Platforms[i] = exptypes.Platform{
+				ID:       platform,
+				Platform: platforms.MustParse(platform),
+			}
+		}
+		dt, err := json.Marshal(expPlatforms)
+		if err != nil {
+			return nil, err
+		}
+		res.AddMeta(exptypes.ExporterPlatformsKey, dt)
+
+		return res, nil
+	}
+
+	destDir := t.TempDir()
+	_, err = c.Build(sb.Context(), SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type:      ExporterLocal,
+				OutputDir: destDir,
+				Attrs: map[string]string{
+					"platform-split": "false",
+				},
+			},
+		},
+	}, "", frontend, nil)
+	require.NoError(t, err)
+
+	dt, err := os.ReadFile(filepath.Join(destDir, "hello-linux-amd64"))
+	require.NoError(t, err)
+	require.Equal(t, "linux/amd64", string(dt))
+
+	dt, err = os.ReadFile(filepath.Join(destDir, "hello-linux-arm64"))
+	require.NoError(t, err)
+	require.Equal(t, "linux/arm64", string(dt))
+}
+
+func testExportLocalNoPlatformSplitOverwrite(t *testing.T, sb integration.Sandbox) {
+	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureMultiPlatform)
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	platformsToTest := []string{"linux/amd64", "linux/arm64"}
+	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		res := gateway.NewResult()
+		expPlatforms := &exptypes.Platforms{
+			Platforms: make([]exptypes.Platform, len(platformsToTest)),
+		}
+		for i, platform := range platformsToTest {
+			st := llb.Scratch().File(
+				llb.Mkfile("hello-linux", 0600, []byte(platform)),
+			)
+
+			def, err := st.Marshal(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			r, err := c.Solve(ctx, gateway.SolveRequest{
+				Definition: def.ToPB(),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			ref, err := r.SingleRef()
+			if err != nil {
+				return nil, err
+			}
+
+			_, err = ref.ToState()
+			if err != nil {
+				return nil, err
+			}
+			res.AddRef(platform, ref)
+
+			expPlatforms.Platforms[i] = exptypes.Platform{
+				ID:       platform,
+				Platform: platforms.MustParse(platform),
+			}
+		}
+		dt, err := json.Marshal(expPlatforms)
+		if err != nil {
+			return nil, err
+		}
+		res.AddMeta(exptypes.ExporterPlatformsKey, dt)
+
+		return res, nil
+	}
+
+	destDir := t.TempDir()
+	_, err = c.Build(sb.Context(), SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type:      ExporterLocal,
+				OutputDir: destDir,
+				Attrs: map[string]string{
+					"platform-split": "false",
+				},
+			},
+		},
+	}, "", frontend, nil)
+	require.Error(t, err)
+}
+
 func readFileInImage(ctx context.Context, t *testing.T, c *Client, ref, path string) ([]byte, error) {
 	def, err := llb.Image(ref).Marshal(ctx)
 	if err != nil {
@@ -6718,6 +7057,18 @@ loop0:
 			break
 		}
 		if retries >= 50 {
+			for _, info := range infos {
+				t.Logf("content: %v %v %+v", info.Digest, info.Size, info.Labels)
+				ra, err := client.ContentStore().ReaderAt(ctx, ocispecs.Descriptor{
+					Digest: info.Digest,
+					Size:   info.Size,
+				})
+				if err == nil {
+					dt := make([]byte, 1024)
+					n, err := ra.ReadAt(dt, 0)
+					t.Logf("data: %+v %q", err, string(dt[:n]))
+				}
+			}
 			require.FailNowf(t, "content still exists", "%+v", infos)
 		}
 		retries++

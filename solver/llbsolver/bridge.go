@@ -226,7 +226,7 @@ type resultProxy struct {
 	id         string
 	b          *provenanceBridge
 	req        frontend.SolveRequest
-	g          flightcontrol.Group
+	g          flightcontrol.Group[solver.CachedResult]
 	mu         sync.Mutex
 	released   bool
 	v          solver.CachedResult
@@ -248,6 +248,9 @@ func (rp *resultProxy) Definition() *pb.Definition {
 }
 
 func (rp *resultProxy) Provenance() interface{} {
+	if rp.provenance == nil {
+		return nil
+	}
 	return rp.provenance
 }
 
@@ -312,7 +315,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 	defer func() {
 		err = rp.wrapError(err)
 	}()
-	r, err := rp.g.Do(ctx, "result", func(ctx context.Context) (interface{}, error) {
+	return rp.g.Do(ctx, "result", func(ctx context.Context) (solver.CachedResult, error) {
 		rp.mu.Lock()
 		if rp.released {
 			rp.mu.Unlock()
@@ -341,24 +344,21 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 			rp.mu.Unlock()
 			return nil, errors.Errorf("evaluating released result")
 		}
-		rp.v = v
-		rp.err = err
 		if err == nil {
-			capture, err := captureProvenance(ctx, v)
-			if err != nil && rp.err != nil {
-				rp.err = errors.Wrapf(rp.err, "failed to capture provenance: %v", err)
+			var capture *provenance.Capture
+			capture, err = captureProvenance(ctx, v)
+			if err != nil {
+				err = errors.Errorf("failed to capture provenance: %v", err)
 				v.Release(context.TODO())
-				rp.v = nil
+				v = nil
 			}
 			rp.provenance = capture
 		}
+		rp.v = v
+		rp.err = err
 		rp.mu.Unlock()
 		return v, err
 	})
-	if r != nil {
-		return r.(solver.CachedResult), nil
-	}
-	return nil, err
 }
 
 func (b *llbBridge) ResolveImageConfig(ctx context.Context, ref string, opt llb.ResolveImageConfigOpt) (dgst digest.Digest, config []byte, err error) {

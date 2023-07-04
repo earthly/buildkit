@@ -16,6 +16,7 @@ import (
 	"github.com/moby/buildkit/cache"
 	"github.com/moby/buildkit/cache/metadata"
 	"github.com/moby/buildkit/executor/oci"
+	"github.com/moby/buildkit/executor/resources"
 	"github.com/moby/buildkit/executor/runcexecutor"
 	containerdsnapshot "github.com/moby/buildkit/snapshot/containerd"
 	"github.com/moby/buildkit/util/leaseutil"
@@ -54,6 +55,11 @@ func NewWorkerOpt(root string, snFactory SnapshotterFactory, rootless bool, proc
 		cmds = append(cmds, binary)
 	}
 
+	rm, err := resources.NewMonitor()
+	if err != nil {
+		return opt, err
+	}
+
 	exe, err := runcexecutor.New(runcexecutor.Opt{
 		// Root directory
 		Root: filepath.Join(root, "executor"),
@@ -70,6 +76,7 @@ func NewWorkerOpt(root string, snFactory SnapshotterFactory, rootless bool, proc
 		TracingSocket:       traceSocket,
 		DefaultCgroupParent: defaultCgroupParent,
 		Hooks:               hooks, //earthly-specific
+		ResourceMonitor:     rm,
 	}, np)
 	if err != nil {
 		return opt, err
@@ -156,6 +163,7 @@ func NewWorkerOpt(root string, snFactory SnapshotterFactory, rootless bool, proc
 		GarbageCollect:   mdb.GarbageCollect,
 		ParallelismSem:   parallelismSem,
 		MountPoolRoot:    filepath.Join(root, "cachemounts"),
+		ResourceMonitor:  rm,
 	}
 	return opt, nil
 }

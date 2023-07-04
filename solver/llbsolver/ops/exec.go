@@ -15,7 +15,8 @@ import (
 	"github.com/containerd/containerd/platforms"
 	"github.com/moby/buildkit/cache"
 	"github.com/moby/buildkit/executor"
-	"github.com/moby/buildkit/frontend/gateway"
+	resourcestypes "github.com/moby/buildkit/executor/resources/types"
+	"github.com/moby/buildkit/frontend/gateway/container"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/localhost"
 	"github.com/moby/buildkit/session/secrets"
@@ -46,7 +47,9 @@ type ExecOp struct {
 	w           worker.Worker
 	platform    *pb.Platform
 	numInputs   int
-	parallelism *semutil.Weighted
+	parallelism *semutil.Weighted // earthly-specific: use *semutil.Weighted instead of *semaphore.Weighted
+	rec         resourcestypes.Recorder
+	digest      digest.Digest
 }
 
 var _ solver.Op = &ExecOp{}
@@ -66,7 +69,12 @@ func NewExecOp(v solver.Vertex, op *pb.Op_Exec, platform *pb.Platform, cm cache.
 		w:           w,
 		platform:    platform,
 		parallelism: parallelism,
+		digest:      v.Digest(),
 	}, nil
+}
+
+func (e *ExecOp) Digest() digest.Digest {
+	return e.digest
 }
 
 func (e *ExecOp) Proto() *pb.ExecOp {
@@ -256,7 +264,7 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		}
 	}
 
-	p, err := gateway.PrepareMounts(ctx, e.mm, e.cm, g, e.op.Meta.Cwd, e.op.Mounts, refs, func(m *pb.Mount, ref cache.ImmutableRef) (cache.MutableRef, error) {
+	p, err := container.PrepareMounts(ctx, e.mm, e.cm, g, e.op.Meta.Cwd, e.op.Mounts, refs, func(m *pb.Mount, ref cache.ImmutableRef) (cache.MutableRef, error) {
 		desc := fmt.Sprintf("mount %s from exec %s", m.Dest, strings.Join(e.op.Meta.Args, " "))
 		return e.cm.New(ctx, ref, g, cache.WithDescription(desc))
 	})
@@ -303,7 +311,7 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		return nil, err
 	}
 
-	extraHosts, err := gateway.ParseExtraHosts(e.op.Meta.ExtraHosts)
+	extraHosts, err := container.ParseExtraHosts(e.op.Meta.ExtraHosts)
 	if err != nil {
 		return nil, err
 	}
@@ -365,10 +373,12 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 	if err != nil {
 		return nil, err
 	}
+	// earthly-specific TODO: should the rec be set to a nopRecord, or can nil be safely used instead?
 
 	var execErr error
+	var rec resourcestypes.Recorder
 	if !isLocal {
-		execErr = e.exec.Run(ctx, "", p.Root, p.Mounts, executor.ProcessInfo{
+		rec, execErr = e.exec.Run(ctx, "", p.Root, p.Mounts, executor.ProcessInfo{
 			Meta:   meta,
 			Stdin:  nil,
 			Stdout: stdout,
@@ -389,6 +399,7 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		// Prevent the result from being released.
 		p.OutputRefs[i].Ref = nil
 	}
+	e.rec = rec
 	return results, errors.Wrapf(execErr, "process %q did not complete successfully", strings.Join(e.op.Meta.Args, " "))
 }
 
@@ -627,4 +638,11 @@ func (e *ExecOp) loadSecretEnv(ctx context.Context, g session.Group) ([]string, 
 }
 
 func (e *ExecOp) IsProvenanceProvider() {
+}
+
+func (e *ExecOp) Samples() (*resourcestypes.Samples, error) {
+	if e.rec == nil {
+		return nil, nil
+	}
+	return e.rec.Samples()
 }

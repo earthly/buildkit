@@ -22,18 +22,22 @@ func updateRuncFieldsForHostOS(runtime *runc.Runc) {
 	runtime.PdeathSignal = syscall.SIGKILL // this can still leak the process
 }
 
-func (w *runcExecutor) run(ctx context.Context, id, bundle string, process executor.ProcessInfo, started func()) error {
+func (w *runcExecutor) run(ctx context.Context, id, bundle string, process executor.ProcessInfo, started func(), keep bool) error {
 	killer := newRunProcKiller(w.runc, id)
 	return w.callWithIO(ctx, id, bundle, process, started, killer, func(ctx context.Context, started chan<- int, io runc.IO, pidfile string) error {
-
 		// earthly-specific; without this runc processes sometimes exit with -1; the +test target in the root earthly repo reproduces it
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 
+		extraArgs := []string{}
+		if keep {
+			extraArgs = append(extraArgs, "--keep")
+		}
 		_, err := w.runc.Run(ctx, id, bundle, &runc.CreateOpts{
-			NoPivot: w.noPivot,
-			Started: started,
-			IO:      io,
+			NoPivot:   w.noPivot,
+			Started:   started,
+			IO:        io,
+			ExtraArgs: extraArgs,
 		})
 		return err
 	})

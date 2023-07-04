@@ -20,6 +20,7 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/executor"
+	"github.com/moby/buildkit/executor/resources"
 	"github.com/moby/buildkit/exporter"
 	imageexporter "github.com/moby/buildkit/exporter/containerimage"
 	"github.com/moby/buildkit/exporter/earthlyoutputs"
@@ -80,6 +81,7 @@ type WorkerOpt struct {
 	ParallelismSem   *semutil.Weighted
 	MetadataStore    *metadata.Store
 	MountPoolRoot    string
+	ResourceMonitor  *resources.Monitor
 }
 
 // Worker is a local worker instance with dedicated snapshotter, cache, and so on.
@@ -212,6 +214,11 @@ func (w *Worker) Close() error {
 	var rerr error
 	for _, provider := range w.NetworkProviders {
 		if err := provider.Close(); err != nil {
+			rerr = multierror.Append(rerr, err)
+		}
+	}
+	if w.ResourceMonitor != nil {
+		if err := w.ResourceMonitor.Close(); err != nil {
 			rerr = multierror.Append(rerr, err)
 		}
 	}

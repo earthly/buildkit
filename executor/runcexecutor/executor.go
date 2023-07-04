@@ -23,6 +23,8 @@ import (
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/moby/buildkit/executor"
 	"github.com/moby/buildkit/executor/oci"
+	"github.com/moby/buildkit/executor/resources"
+	resourcestypes "github.com/moby/buildkit/executor/resources/types"
 	gatewayapi "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/solver/pb"
@@ -51,7 +53,8 @@ type Opt struct {
 	ApparmorProfile string
 	SELinux         bool
 	TracingSocket   string
-	Hooks           []oci.OciHook
+	Hooks           []oci.OciHook // earthly-specific
+	ResourceMonitor *resources.Monitor
 }
 
 var defaultCommandCandidates = []string{"buildkit-runc", "runc"}
@@ -72,7 +75,8 @@ type runcExecutor struct {
 	apparmorProfile  string
 	selinux          bool
 	tracingSocket    string
-	hooks            []oci.OciHook
+	hooks            []oci.OciHook // earthly-specific
+	resmon           *resources.Monitor
 }
 
 func New(opt Opt, networkProviders map[pb.NetMode]network.Provider) (executor.Executor, error) {
@@ -138,12 +142,13 @@ func New(opt Opt, networkProviders map[pb.NetMode]network.Provider) (executor.Ex
 		apparmorProfile:  opt.ApparmorProfile,
 		selinux:          opt.SELinux,
 		tracingSocket:    opt.TracingSocket,
-		hooks:            opt.Hooks,
+		hooks:            opt.Hooks, // earthly-specific
+		resmon:           opt.ResourceMonitor,
 	}
 	return w, nil
 }
 
-func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, mounts []executor.Mount, process executor.ProcessInfo, started chan<- struct{}) (err error) {
+func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, mounts []executor.Mount, process executor.ProcessInfo, started chan<- struct{}) (rec resourcestypes.Recorder, err error) {
 	meta := process.Meta
 
 	startedOnce := sync.Once{}
@@ -166,13 +171,18 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	provider, ok := w.networkProviders[meta.NetMode]
 	if !ok {
-		return errors.Errorf("unknown network mode %s", meta.NetMode)
+		return nil, errors.Errorf("unknown network mode %s", meta.NetMode)
 	}
 	namespace, err := provider.New(ctx, meta.Hostname)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer namespace.Close()
+	doReleaseNetwork := true
+	defer func() {
+		if doReleaseNetwork {
+			namespace.Close()
+		}
+	}()
 
 	if meta.NetMode == pb.NetMode_HOST {
 		bklog.G(ctx).Info("enabling HostNetworking")
@@ -180,12 +190,12 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	resolvConf, err := oci.GetResolvConf(ctx, w.root, w.idmap, w.dns)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	hostsFile, clean, err := oci.GetHostsFile(ctx, w.root, meta.ExtraHosts, w.idmap, meta.Hostname)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if clean != nil {
 		defer clean()
@@ -193,12 +203,12 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	mountable, err := root.Src.Mount(ctx, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rootMount, release, err := mountable.Mount()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if release != nil {
 		defer release()
@@ -210,7 +220,7 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 	bundle := filepath.Join(w.root, id)
 
 	if err := os.Mkdir(bundle, 0o711); err != nil {
-		return err
+		return nil, err
 	}
 	defer os.RemoveAll(bundle)
 
@@ -221,10 +231,10 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	rootFSPath := filepath.Join(bundle, "rootfs")
 	if err := idtools.MkdirAllAndChown(rootFSPath, 0o700, identity); err != nil {
-		return err
+		return nil, err
 	}
 	if err := mount.All(rootMount, rootFSPath); err != nil {
-		return err
+		return nil, err
 	}
 	defer mount.Unmount(rootFSPath, 0)
 
@@ -232,12 +242,12 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	uid, gid, sgids, err := oci.GetUser(rootFSPath, meta.User)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	f, err := os.Create(filepath.Join(bundle, "config.json"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -254,7 +264,7 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 	if w.idmap != nil {
 		identity, err = w.idmap.ToHost(identity)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -267,7 +277,7 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	spec, cleanup, err := oci.GenerateSpec(ctx, meta, mounts, id, resolvConf, hostsFile, namespace, w.cgroupParent, w.processMode, w.idmap, w.apparmorProfile, w.selinux, w.tracingSocket, opts...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer cleanup()
 
@@ -278,11 +288,11 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 
 	newp, err := fs.RootPath(rootFSPath, meta.Cwd)
 	if err != nil {
-		return errors.Wrapf(err, "working dir %s points to invalid target", newp)
+		return nil, errors.Wrapf(err, "working dir %s points to invalid target", newp)
 	}
 	if _, err := os.Stat(newp); err != nil {
 		if err := idtools.MkdirAllAndChown(newp, 0o755, identity); err != nil {
-			return errors.Wrapf(err, "failed to create working directory %s", newp)
+			return nil, errors.Wrapf(err, "failed to create working directory %s", newp)
 		}
 	}
 
@@ -290,15 +300,25 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 	spec.Process.OOMScoreAdj = w.oomScoreAdj
 	if w.rootless {
 		if err := rootlessspecconv.ToRootless(spec); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	if err := json.NewEncoder(f).Encode(spec); err != nil {
-		return err
+		return nil, err
 	}
 
 	bklog.G(ctx).Debugf("> creating %s %v", id, meta.Args)
+
+	cgroupPath := spec.Linux.CgroupsPath
+	if cgroupPath != "" {
+		rec, err = w.resmon.RecordNamespace(cgroupPath, resources.RecordOpt{
+			NetworkSampler: namespace,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	trace.SpanFromContext(ctx).AddEvent("Container created")
 	err = w.run(ctx, id, bundle, process, func() {
@@ -307,9 +327,33 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 			if started != nil {
 				close(started)
 			}
+			if rec != nil {
+				rec.Start()
+			}
 		})
-	})
-	return exitError(ctx, err)
+	}, true)
+
+	releaseContainer := func(ctx context.Context) error {
+		err := w.runc.Delete(ctx, id, &runc.DeleteOpts{})
+		err1 := namespace.Close()
+		if err == nil {
+			err = err1
+		}
+		return err
+	}
+	doReleaseNetwork = false
+
+	err = exitError(ctx, err)
+	if err != nil {
+		releaseContainer(context.TODO())
+		return nil, err
+	}
+
+	if rec == nil {
+		return nil, releaseContainer(context.TODO())
+	}
+
+	return rec, rec.CloseAsync(releaseContainer)
 }
 
 func exitError(ctx context.Context, err error) error {

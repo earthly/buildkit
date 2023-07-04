@@ -27,8 +27,12 @@ import (
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/executor"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
+	"github.com/moby/buildkit/exporter/containerimage/image"
 	"github.com/moby/buildkit/frontend"
+	"github.com/moby/buildkit/frontend/dockerui"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/moby/buildkit/frontend/gateway/container"
+	"github.com/moby/buildkit/frontend/gateway/forwarder"
 	pb "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
@@ -89,7 +93,7 @@ func (gf *gatewayFrontend) Solve(ctx context.Context, llbBridge frontend.Fronten
 	}
 
 	_, isDevel := opts[keyDevel]
-	var img ocispecs.Image
+	var img image.Image
 	var mfstDigest digest.Digest
 	var rootFS cache.MutableRef
 	var readonly bool // TODO: try to switch to read-only by default.
@@ -137,31 +141,51 @@ func (gf *gatewayFrontend) Solve(ctx context.Context, llbBridge frontend.Fronten
 			}
 		}
 	} else {
-		sourceRef, err := reference.ParseNormalizedNamed(source)
+		c, err := forwarder.LLBBridgeToGatewayClient(ctx, llbBridge, opts, inputs, gf.workers, sid, sm)
 		if err != nil {
 			return nil, err
 		}
-
-		dgst, config, err := llbBridge.ResolveImageConfig(ctx, reference.TagNameOnly(sourceRef).String(), llb.ResolveImageConfigOpt{})
+		dc, err := dockerui.NewClient(c)
 		if err != nil {
 			return nil, err
 		}
-		mfstDigest = dgst
-
-		if err := json.Unmarshal(config, &img); err != nil {
+		st, dockerImage, err := dc.NamedContext(ctx, source, dockerui.ContextOpt{
+			CaptureDigest: &mfstDigest,
+		})
+		if err != nil {
 			return nil, err
 		}
-
-		if dgst != "" {
-			sourceRef, err = reference.WithDigest(sourceRef, dgst)
+		if dockerImage != nil {
+			img = *dockerImage
+		}
+		if st == nil {
+			sourceRef, err := reference.ParseNormalizedNamed(source)
 			if err != nil {
 				return nil, err
 			}
+
+			dgst, config, err := llbBridge.ResolveImageConfig(ctx, reference.TagNameOnly(sourceRef).String(), llb.ResolveImageConfigOpt{})
+			if err != nil {
+				return nil, err
+			}
+			mfstDigest = dgst
+
+			if err := json.Unmarshal(config, &img); err != nil {
+				return nil, err
+			}
+
+			if dgst != "" {
+				sourceRef, err = reference.WithDigest(sourceRef, dgst)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			src := llb.Image(sourceRef.String(), &markTypeFrontend{})
+			st = &src
 		}
 
-		src := llb.Image(sourceRef.String(), &markTypeFrontend{})
-
-		def, err := src.Marshal(ctx)
+		def, err := st.Marshal(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -275,8 +299,7 @@ func (gf *gatewayFrontend) Solve(ctx context.Context, llbBridge frontend.Fronten
 		mnts = append(mnts, *mdmnt)
 	}
 
-	err = w.Executor().Run(ctx, "", mountWithSession(rootFS, session.NewGroup(sid)), mnts, executor.ProcessInfo{Meta: meta, Stdin: lbf.Stdin, Stdout: lbf.Stdout, Stderr: os.Stderr}, nil)
-
+	_, err = w.Executor().Run(ctx, "", container.MountWithSession(rootFS, session.NewGroup(sid)), mnts, executor.ProcessInfo{Meta: meta, Stdin: lbf.Stdin, Stdout: lbf.Stdout, Stderr: os.Stderr}, nil)
 	if err != nil {
 		if errdefs.IsCanceled(ctx, err) && lbf.isErrServerClosed {
 			err = errors.Errorf("frontend grpc server closed unexpectedly")
@@ -981,7 +1004,7 @@ func (lbf *llbBridgeForwarder) Inputs(ctx context.Context, in *pb.InputsRequest)
 
 func (lbf *llbBridgeForwarder) NewContainer(ctx context.Context, in *pb.NewContainerRequest) (_ *pb.NewContainerResponse, err error) {
 	bklog.G(ctx).Debugf("|<--- NewContainer %s", in.ContainerID)
-	ctrReq := NewContainerRequest{
+	ctrReq := container.NewContainerRequest{
 		ContainerID: in.ContainerID,
 		NetMode:     in.Network,
 		Hostname:    in.Hostname,
@@ -1011,7 +1034,7 @@ func (lbf *llbBridgeForwarder) NewContainer(ctx context.Context, in *pb.NewConta
 				}
 			}
 		}
-		ctrReq.Mounts = append(ctrReq.Mounts, Mount{
+		ctrReq.Mounts = append(ctrReq.Mounts, container.Mount{
 			WorkerRef: workerRef,
 			Mount: &opspb.Mount{
 				Dest:      m.Dest,
@@ -1034,12 +1057,12 @@ func (lbf *llbBridgeForwarder) NewContainer(ctx context.Context, in *pb.NewConta
 		return nil, stack.Enable(err)
 	}
 
-	ctrReq.ExtraHosts, err = ParseExtraHosts(in.ExtraHosts)
+	ctrReq.ExtraHosts, err = container.ParseExtraHosts(in.ExtraHosts)
 	if err != nil {
 		return nil, stack.Enable(err)
 	}
 
-	ctr, err := NewContainer(context.Background(), w, lbf.sm, group, ctrReq)
+	ctr, err := container.NewContainer(context.Background(), w, lbf.sm, group, ctrReq)
 	if err != nil {
 		return nil, stack.Enable(err)
 	}
@@ -1203,7 +1226,21 @@ func (w *outputWriter) Write(msg []byte) (int, error) {
 	return len(msg), stack.Enable(err)
 }
 
+type execProcessServerThreadSafe struct {
+	pb.LLBBridge_ExecProcessServer
+	sendMu sync.Mutex
+}
+
+func (w *execProcessServerThreadSafe) Send(m *pb.ExecMessage) error {
+	w.sendMu.Lock()
+	defer w.sendMu.Unlock()
+	return w.LLBBridge_ExecProcessServer.Send(m)
+}
+
 func (lbf *llbBridgeForwarder) ExecProcess(srv pb.LLBBridge_ExecProcessServer) error {
+	srv = &execProcessServerThreadSafe{
+		LLBBridge_ExecProcessServer: srv,
+	}
 	eg, ctx := errgroup.WithContext(srv.Context())
 
 	msgs := make(chan *pb.ExecMessage)
@@ -1313,6 +1350,7 @@ func (lbf *llbBridgeForwarder) ExecProcess(srv pb.LLBBridge_ExecProcessServer) e
 				proc, err := ctr.Start(initCtx, gwclient.StartRequest{
 					Args:                      init.Meta.Args,
 					Env:                       init.Meta.Env,
+					SecretEnv:                 init.Secretenv,
 					User:                      init.Meta.User,
 					Cwd:                       init.Meta.Cwd,
 					Tty:                       init.Tty,

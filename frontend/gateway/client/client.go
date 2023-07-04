@@ -72,6 +72,7 @@ type Container interface {
 type StartRequest struct {
 	Args           []string
 	Env            []string
+	SecretEnv      []*pb.SecretEnv
 	User           string
 	Cwd            string
 	Tty            bool

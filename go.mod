@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.4.1
+	github.com/Masterminds/semver/v3 v3.1.0
 	github.com/Microsoft/go-winio v0.6.1
 	github.com/Microsoft/hcsshim v0.10.0-rc.8
 	github.com/agext/levenshtein v1.2.3
@@ -25,9 +26,9 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3
 	github.com/containerd/typeurl/v2 v2.1.1
 	github.com/coreos/go-systemd/v22 v22.5.0
-	github.com/docker/cli v24.0.1+incompatible
+	github.com/docker/cli v24.0.2+incompatible
 	github.com/docker/distribution v2.8.2+incompatible
-	github.com/docker/docker v24.0.1+incompatible
+	github.com/docker/docker v24.0.2+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/docker/go-units v0.5.0
 	github.com/gofrs/flock v0.8.1
@@ -58,15 +59,16 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/profile v1.5.0
+	github.com/prometheus/procfs v0.9.0
 	github.com/serialx/hashring v0.0.0-20190422032157-8b2912629002
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spdx/tools-golang v0.5.1
 	github.com/stretchr/testify v1.8.3
-	github.com/tonistiigi/fsutil v0.0.0-20230407161946-9e7a6df48576
+	github.com/tonistiigi/fsutil v0.0.0-20230629203738-36ef4d8c0dbb
 	github.com/tonistiigi/go-actions-cache v0.0.0-20220404170428-0bdeb6e1eac7
 	github.com/tonistiigi/go-archvariant v1.0.0
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
-	github.com/tonistiigi/vt100 v0.0.0-20210615222946-8066bb97264f
+	github.com/tonistiigi/vt100 v0.0.0-20230623042737-f9a4f7ef6531
 	github.com/urfave/cli v1.22.12
 	go.etcd.io/bbolt v1.3.7
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.40.0
@@ -150,7 +152,6 @@ require (
 	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
-	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.4.0 // indirect
 	github.com/shibumi/go-pathspec v1.3.0 // indirect

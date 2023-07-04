@@ -111,7 +111,7 @@ func TestRuncWorker(t *testing.T) {
 	}
 
 	stderr := bytes.NewBuffer(nil)
-	err = w.WorkerOpt.Executor.Run(ctx, "", execMount(snap, true), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
+	_, err = w.WorkerOpt.Executor.Run(ctx, "", execMount(snap, true), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
 	require.Error(t, err) // Read-only root
 	// typical error is like `mkdir /.../rootfs/proc: read-only file system`.
 	// make sure the error is caused before running `echo foo > /bar`.
@@ -120,7 +120,7 @@ func TestRuncWorker(t *testing.T) {
 	root, err := w.CacheMgr.New(ctx, snap, nil, cache.CachePolicyRetain)
 	require.NoError(t, err)
 
-	err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
+	_, err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
 	require.NoError(t, err)
 
 	meta = executor.Meta{
@@ -128,7 +128,7 @@ func TestRuncWorker(t *testing.T) {
 		Cwd:  "/",
 	}
 
-	err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
+	_, err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stderr: &nopCloser{stderr}}, nil)
 	require.NoError(t, err)
 
 	rf, err := root.Commit(ctx)
@@ -210,7 +210,7 @@ func TestRuncWorkerNoProcessSandbox(t *testing.T) {
 	}
 	stdout := bytes.NewBuffer(nil)
 	stderr := bytes.NewBuffer(nil)
-	err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stdout: &nopCloser{stdout}, Stderr: &nopCloser{stderr}}, nil)
+	_, err = w.WorkerOpt.Executor.Run(ctx, "", execMount(root, false), nil, executor.ProcessInfo{Meta: meta, Stdout: &nopCloser{stdout}, Stderr: &nopCloser{stderr}}, nil)
 	require.NoError(t, err, fmt.Sprintf("stdout=%q, stderr=%q", stdout.String(), stderr.String()))
 	require.Equal(t, string(selfCmdline), stdout.String())
 }
