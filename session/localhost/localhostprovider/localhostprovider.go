@@ -310,7 +310,7 @@ func receiveFile(stream localhost.Localhost_PutServer) (err error) {
 		return errors.WithStack(err)
 	}
 
-	f, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY, os.FileMode(stat.Mode))
+	f, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(stat.Mode))
 	if err != nil {
 		return errors.WithStack(err)
 	}
