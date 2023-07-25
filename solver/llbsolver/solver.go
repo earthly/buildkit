@@ -206,7 +206,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 		var releasers []func()
 
 		attrs := map[string]string{
-			"mode":          "max",
+			"mode":          "min", // Earthly specific. We set this to "min" instead of "max" to prevent the slow cache export at the end of a build.
 			"capture-usage": "true",
 		}
 
