@@ -1298,6 +1298,7 @@ guide – Leverage build cache](https://docs.docker.com/develop/develop-images/d
 > **Note**
 >
 > Not yet available in stable syntax, use [`docker/dockerfile:1-labs`](#syntax) version (`1.5-labs` or newer).
+> Planned to be included in `docker/dockerfile:1.6`.
 
 The checksum of a remote file can be verified with the `--checksum` flag:
 
@@ -1312,6 +1313,7 @@ The `--checksum` flag only supports HTTP sources currently.
 > **Note**
 >
 > Not yet available in stable syntax, use [`docker/dockerfile:1-labs`](#syntax) version (`1.5-labs` or newer).
+> Planned to be included in `docker/dockerfile:1.6`.
 
 This form allows adding a git repository to an image directly, without using the `git` command inside the image:
 ```
@@ -2398,6 +2400,7 @@ The options that can appear before `CMD` are:
 - `--interval=DURATION` (default: `30s`)
 - `--timeout=DURATION` (default: `30s`)
 - `--start-period=DURATION` (default: `0s`)
+- `--start-interval=DURATION` (default: `5s`)
 - `--retries=N` (default: `3`)
 
 The health check will first run **interval** seconds after the container is
@@ -2413,6 +2416,8 @@ to be considered `unhealthy`.
 Probe failure during that period will not be counted towards the maximum number of retries.
 However, if a health check succeeds during the start period, the container is considered
 started and all consecutive failures will be counted towards the maximum number of retries.
+
+**start interval** is the time between health checks during the start period.
 
 There can only be one `HEALTHCHECK` instruction in a Dockerfile. If you list
 more than one then only the last `HEALTHCHECK` will take effect.

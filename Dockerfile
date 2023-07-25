@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:master
 
 ARG RUNC_VERSION=v1.1.7
-ARG CONTAINERD_VERSION=v1.7.1
+ARG CONTAINERD_VERSION=v1.7.2
 # containerd v1.6 for integration tests
 ARG CONTAINERD_ALT_VERSION_16=v1.6.21
 ARG REGISTRY_VERSION=2.8.0
@@ -95,11 +95,14 @@ FROM buildkit-base AS buildkitd
 # BUILDKITD_TAGS defines additional Go build tags for compiling buildkitd
 ARG BUILDKITD_TAGS
 ARG TARGETPLATFORM
+ARG GOBUILDFLAGS
+ARG VERIFYFLAGS="--static"
+ARG CGO_ENABLED=0
 RUN --mount=target=. --mount=target=/root/.cache,type=cache \
   --mount=target=/go/pkg/mod,type=cache \
   --mount=source=/tmp/.ldflags,target=/tmp/.ldflags,from=buildkit-version \
-  CGO_ENABLED=0 xx-go build -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
-  xx-verify --static /usr/bin/buildkitd
+  xx-go build ${GOBUILDFLAGS} -ldflags "$(cat /tmp/.ldflags) -extldflags '-static'" -tags "osusergo netgo static_build seccomp ${BUILDKITD_TAGS}" -o /usr/bin/buildkitd ./cmd/buildkitd && \
+  xx-verify ${VERIFYFLAGS} /usr/bin/buildkitd
 
 FROM scratch AS binaries-linux
 COPY --link --from=runc /usr/bin/runc /buildkit-runc

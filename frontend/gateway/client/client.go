@@ -27,8 +27,8 @@ func NewResult() *Result {
 
 type Client interface {
 	Solve(ctx context.Context, req SolveRequest) (*Result, error)
-	Export(ctx context.Context, req ExportRequest) error
-	ResolveImageConfig(ctx context.Context, ref string, opt llb.ResolveImageConfigOpt) (digest.Digest, []byte, error)
+	Export(ctx context.Context, req ExportRequest) error // earthly-specific
+	ResolveImageConfig(ctx context.Context, ref string, opt llb.ResolveImageConfigOpt) (string, digest.Digest, []byte, error)
 	BuildOpts() BuildOpts
 	Inputs(ctx context.Context) (map[string]llb.State, error)
 	NewContainer(ctx context.Context, req NewContainerRequest) (Container, error)

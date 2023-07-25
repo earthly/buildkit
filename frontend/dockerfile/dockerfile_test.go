@@ -168,6 +168,7 @@ var allTests = integration.TestFuncs(
 	testSBOMScannerArgs,
 	testMultiPlatformWarnings,
 	testNilContextInSolveGateway,
+	testCopyUnicodePath,
 )
 
 // Tests that depend on the `security.*` entitlements
@@ -5193,10 +5194,27 @@ func testCgroupParent(t *testing.T, sb integration.Sandbox) {
 		t.SkipNow()
 	}
 
+	if _, err := os.Lstat("/sys/fs/cgroup/cgroup.subtree_control"); os.IsNotExist(err) {
+		t.Skipf("test requires cgroup v2")
+	}
+
+	cgroupName := "test." + identity.NewID()
+
+	err := os.MkdirAll(filepath.Join("/sys/fs/cgroup", cgroupName), 0755)
+	require.NoError(t, err)
+
+	defer func() {
+		err := os.RemoveAll(filepath.Join("/sys/fs/cgroup", cgroupName))
+		require.NoError(t, err)
+	}()
+
+	err = os.WriteFile(filepath.Join("/sys/fs/cgroup", cgroupName, "pids.max"), []byte("10"), 0644)
+	require.NoError(t, err)
+
 	f := getFrontend(t, sb)
 	dockerfile := []byte(`
 FROM alpine AS base
-RUN cat /proc/self/cgroup > /out
+RUN mkdir /out; (for i in $(seq 1 10); do sleep 1 & done 2>/out/error); cat /proc/self/cgroup > /out/cgroup
 FROM scratch
 COPY --from=base /out /
 `)
@@ -5215,7 +5233,7 @@ COPY --from=base /out /
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		FrontendAttrs: map[string]string{
-			"cgroup-parent": "foocgroup",
+			"cgroup-parent": cgroupName,
 		},
 		LocalDirs: map[string]string{
 			dockerui.DefaultLocalNameDockerfile: dir,
@@ -5230,9 +5248,14 @@ COPY --from=base /out /
 	}, nil)
 	require.NoError(t, err)
 
-	dt, err := os.ReadFile(filepath.Join(destDir, "out"))
+	dt, err := os.ReadFile(filepath.Join(destDir, "cgroup"))
 	require.NoError(t, err)
-	require.Contains(t, strings.TrimSpace(string(dt)), `/foocgroup/buildkit/`)
+	// cgroupns does not leak the parent cgroup name
+	require.NotContains(t, strings.TrimSpace(string(dt)), `foocgroup`)
+
+	dt, err = os.ReadFile(filepath.Join(destDir, "error"))
+	require.NoError(t, err)
+	require.Contains(t, strings.TrimSpace(string(dt)), `Resource temporarily unavailable`)
 }
 
 func testNamedImageContext(t *testing.T, sb integration.Sandbox) {
@@ -6732,6 +6755,58 @@ func testNilContextInSolveGateway(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	// should not cause buildkitd to panic
 	require.ErrorContains(t, err, "invalid nil input definition to definition op")
+}
+
+func testCopyUnicodePath(t *testing.T, sb integration.Sandbox) {
+	f := getFrontend(t, sb)
+	c, err := client.New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	dockerfile := []byte(`
+FROM alpine
+COPY test-äöü.txt /
+COPY test-%C3%A4%C3%B6%C3%BC.txt /
+COPY test+aou.txt /
+`)
+
+	dir, err := integration.Tmpdir(
+		t,
+		fstest.CreateFile("Dockerfile", dockerfile, 0600),
+		fstest.CreateFile("test-äöü.txt", []byte("foo"), 0644),
+		fstest.CreateFile("test-%C3%A4%C3%B6%C3%BC.txt", []byte("bar"), 0644),
+		fstest.CreateFile("test+aou.txt", []byte("baz"), 0644),
+	)
+	require.NoError(t, err)
+
+	destDir, err := integration.Tmpdir(t)
+	require.NoError(t, err)
+
+	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
+		Exports: []client.ExportEntry{
+			{
+				Type:      client.ExporterLocal,
+				OutputDir: destDir,
+			},
+		},
+		LocalDirs: map[string]string{
+			dockerui.DefaultLocalNameDockerfile: dir,
+			dockerui.DefaultLocalNameContext:    dir,
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	dt, err := os.ReadFile(filepath.Join(destDir, "test-äöü.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "foo", string(dt))
+
+	dt, err = os.ReadFile(filepath.Join(destDir, "test-%C3%A4%C3%B6%C3%BC.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "bar", string(dt))
+
+	dt, err = os.ReadFile(filepath.Join(destDir, "test+aou.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "baz", string(dt))
 }
 
 func runShell(dir string, cmds ...string) error {
