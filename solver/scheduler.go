@@ -2,7 +2,9 @@ package solver
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/moby/buildkit/solver/internal/pipe"
@@ -107,6 +109,11 @@ func (s *scheduler) loop() {
 
 // dispatch schedules an edge to be processed
 func (s *scheduler) dispatch(e *edge) {
+	helpMe := []string{"v1"} // earthly specific
+
+	helpMe = append(helpMe, fmt.Sprintf("%s: %+v", e.edge.Vertex.Name(), e))
+
+	helpMe = append(helpMe, fmt.Sprintf("%d %d %d %d", len(s.incoming), len(s.outgoing), len(s.incoming[e]), len(s.outgoing[e])))
 	inc := make([]pipe.Sender, len(s.incoming[e]))
 	for i, p := range s.incoming[e] {
 		inc[i] = p.Sender
@@ -126,6 +133,7 @@ func (s *scheduler) dispatch(e *edge) {
 			e.hasActiveOutgoing = true
 		}
 	}
+	helpMe = append(helpMe, fmt.Sprintf("hasActiveOutgoing %v", e.hasActiveOutgoing))
 
 	pf := &pipeFactory{s: s, e: e}
 
@@ -139,9 +147,12 @@ func (s *scheduler) dispatch(e *edge) {
 	}
 
 	// set up new requests that didn't complete/were added by this run
+	helpMe = append(helpMe, fmt.Sprintf("make openIncoming %d", len(inc)))
 	openIncoming := make([]*edgePipe, 0, len(inc))
 	for _, r := range s.incoming[e] {
-		if !r.Sender.Status().Completed {
+		status := r.Sender.Status()
+		helpMe = append(helpMe, fmt.Sprintf("%+v", status))
+		if !status.Completed {
 			openIncoming = append(openIncoming, r)
 		}
 	}
@@ -151,9 +162,12 @@ func (s *scheduler) dispatch(e *edge) {
 		delete(s.incoming, e)
 	}
 
+	helpMe = append(helpMe, fmt.Sprintf("make openOutgoing %d", len(out)))
 	openOutgoing := make([]*edgePipe, 0, len(out))
 	for _, r := range s.outgoing[e] {
-		if !r.Receiver.Status().Completed {
+		status := r.Receiver.Status()
+		helpMe = append(helpMe, fmt.Sprintf("%+v", status))
+		if !status.Completed {
 			openOutgoing = append(openOutgoing, r)
 		}
 	}
@@ -182,14 +196,18 @@ func (s *scheduler) dispatch(e *edge) {
 		e.keysDidChange = false
 	}
 
+	helpMe = append(helpMe, fmt.Sprintf("in: %d out: %d", len(openIncoming), len(openOutgoing)))
+
 	// validation to avoid deadlocks/resource leaks:
 	// TODO: if these start showing up in error reports they can be changed
 	// to error the edge instead. They can only appear from algorithm bugs in
 	// unpark(), not for any external input.
 	if len(openIncoming) > 0 && len(openOutgoing) == 0 {
+		bklog.G(context.TODO()).Errorf("return leaving incoming open help me: %s\n", strings.Join(helpMe, ";"))
 		e.markFailed(pf, errors.New("buildkit scheduler error: return leaving incoming open. Please report this with BUILDKIT_SCHEDULER_DEBUG=1"))
 	}
 	if len(openIncoming) == 0 && len(openOutgoing) > 0 {
+		bklog.G(context.TODO()).Errorf("return leaving outgoing open help me: %s\n", strings.Join(helpMe, ";"))
 		e.markFailed(pf, errors.New("buildkit scheduler error: return leaving outgoing open. Please report this with BUILDKIT_SCHEDULER_DEBUG=1"))
 	}
 }
