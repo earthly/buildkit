@@ -32,6 +32,8 @@ import (
 	fstypes "github.com/tonistiigi/fsutil/types"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type SolveOpt struct {
@@ -324,6 +326,10 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			resp, err := stream.Recv()
 			if err != nil {
 				if err == io.EOF {
+					return nil
+				}
+				// earthly-specific: a race happens sometimes when there is slow status consumption
+				if status.Code(errors.Cause(err)) == codes.Canceled {
 					return nil
 				}
 				return errors.Wrap(err, "failed to receive status")
