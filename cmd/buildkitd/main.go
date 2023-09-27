@@ -22,6 +22,7 @@ import (
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/gofrs/flock"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	regproxy "github.com/moby/buildkit/api/services/registry"
 	"github.com/moby/buildkit/cache/remotecache"
 	"github.com/moby/buildkit/cache/remotecache/azblob"
 	"github.com/moby/buildkit/cache/remotecache/gha"
@@ -307,13 +308,14 @@ func main() {
 		controller.Register(server)
 		reflection.Register(server)
 
-		// earthly specific
+		// Earthly specific.
 		ctxReg, cancelReg := context.WithCancel(ctx)
 		defer cancelReg()
 		lrPort, ok := os.LookupEnv("BUILDKIT_LOCAL_REGISTRY_LISTEN_PORT")
+		lrAddr := fmt.Sprintf("0.0.0.0:%s", lrPort)
 		if ok {
 			logrus.Infof("Starting local registry for outputs on port %s", lrPort)
-			serveErr := registry.Serve(ctxReg, fmt.Sprintf("0.0.0.0:%s", lrPort))
+			serveErr := registry.Serve(ctxReg, lrAddr)
 			go func() {
 				for {
 					select {
@@ -330,6 +332,10 @@ func main() {
 				}
 			}()
 		}
+
+		// Earthly specific.
+		reg := regproxy.NewServer(lrAddr)
+		regproxy.RegisterRegistryServer(server, reg)
 
 		ents := c.GlobalStringSlice("allow-insecure-entitlement")
 		if len(ents) > 0 {
