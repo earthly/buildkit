@@ -89,6 +89,8 @@ const (
 	CapSourceDateEpoch apicaps.CapID = "exporter.sourcedateepoch"
 
 	CapSourcePolicy apicaps.CapID = "source.policy"
+
+	CapEarthlyRegistryProxy apicaps.CapID = "earthly.regproxy" // earthly-specific
 )
 
 func init() {
@@ -477,6 +479,12 @@ func init() {
 
 	Caps.Init(apicaps.Cap{
 		ID:      CapSourcePolicy,
+		Enabled: true,
+		Status:  apicaps.CapStatusExperimental,
+	})
+
+	Caps.Init(apicaps.Cap{
+		ID:      CapEarthlyRegistryProxy,
 		Enabled: true,
 		Status:  apicaps.CapStatusExperimental,
 	})
