@@ -1,26 +1,24 @@
 package earthly_registry_v1 //nolint:revive
 
 import (
-	"bufio"
-	"fmt"
 	"io"
-	"net/http"
+	"net"
 	"strings"
 
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 // NewServer creates and returns a new proxy server with a given host and client.
 func NewServer(addr string) *Server {
 	return &Server{
 		addr: addr,
-		cl:   &http.Client{},
 	}
 }
 
+// Server connects incoming gRPC data streams to a backing HTTP service.
 type Server struct {
 	addr string
-	cl   *http.Client
 	UnimplementedRegistryServer
 }
 
@@ -70,71 +68,40 @@ func (s *StreamRW) Read(p []byte) (int, error) {
 	return n + l, nil
 }
 
-// parseHeader parses the incoming request header and extracts the method, path,
-// & header values.
-func parseHeader(r io.Reader) (method string, path string, header http.Header, err error) {
-	sc := bufio.NewScanner(r)
-	header = http.Header{}
-
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" {
-			break
-		}
-		if strings.Contains(line, "HTTP/") {
-			parts := strings.Split(line, " ")
-			if len(parts) < 2 {
-				err = errors.New("invalid status line")
-				return
-			}
-			method, path = parts[0], parts[1]
-			continue
-		}
-		parts := strings.Split(line, ": ")
-		if len(parts) < 2 {
-			err = errors.New("invalid header format")
-			return
-		}
-		header.Add(parts[0], parts[1])
-	}
-
-	err = sc.Err()
-
-	return
-}
-
 // Proxy requests sent via gRPC data stream to the embedded Docker registry and
-// pipe them back out through the stream again. The rationale is that we have a
-// preexisting gRPC connection which can be leveraged to send image data without
-// having to support further infrastructure changes.
+// pipe them back out through the stream again. This allows us to send HTTP
+// requests to the embedded registry without having to connect via some other
+// exposed server or port.
 func (s *Server) Proxy(stream Registry_ProxyServer) error {
-	ctx := stream.Context()
 	rw := NewStreamRW(stream)
 
-	method, path, header, err := parseHeader(rw)
-	if err != nil {
-		return err
-	}
-
 	addr := strings.ReplaceAll(s.addr, "0.0.0.0", "127.0.0.1")
-	u := fmt.Sprintf("http://%s%s", addr, path)
 
-	out, err := http.NewRequestWithContext(ctx, method, u, nil)
+	conn, err := net.Dial("tcp", addr)
+	defer conn.Close()
+
+	ctx := stream.Context()
+	eg, ctx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		_, err = io.Copy(conn, rw)
+		if err != nil {
+			return errors.Wrap(err, "failed to copy from stream to host")
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		_, err = io.Copy(rw, conn)
+		if err != nil {
+			return errors.Wrap(err, "failed to copy from host to stream")
+		}
+		return nil
+	})
+
+	err = eg.Wait()
 	if err != nil {
-		return errors.Wrap(err, "failed to create request")
-	}
-
-	out.Header = header
-
-	res, err := s.cl.Do(out)
-	if err != nil {
-		return errors.Wrap(err, "failed to send registry request")
-	}
-	defer res.Body.Close()
-
-	err = res.Write(rw)
-	if err != nil {
-		return errors.Wrap(err, "failed to write response")
+		return errors.Wrap(err, "failed to wait")
 	}
 
 	return nil
