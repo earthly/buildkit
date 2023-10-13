@@ -43,22 +43,21 @@ import (
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/contentutil"
-	"github.com/moby/buildkit/util/iohelper"
 	"github.com/moby/buildkit/util/testutil"
 	"github.com/moby/buildkit/util/testutil/httpserver"
 	"github.com/moby/buildkit/util/testutil/integration"
-	digest "github.com/opencontainers/go-digest"
+	"github.com/moby/buildkit/util/testutil/workers"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
 func init() {
-	if integration.IsTestDockerd() {
-		integration.InitDockerdWorker()
+	if workers.IsTestDockerd() {
+		workers.InitDockerdWorker()
 	} else {
-		integration.InitOCIWorker()
-		integration.InitContainerdWorker()
+		workers.InitOCIWorker()
+		workers.InitContainerdWorker()
 	}
 }
 
@@ -169,6 +168,7 @@ var allTests = integration.TestFuncs(
 	testMultiPlatformWarnings,
 	testNilContextInSolveGateway,
 	testCopyUnicodePath,
+	testFrontendDeduplicateSources,
 )
 
 // Tests that depend on the `security.*` entitlements
@@ -261,12 +261,11 @@ COPY --from=build /out /out
 echo -n $my_arg $1 > /out
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("myscript.sh", script, 0700),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -315,11 +314,10 @@ ENV myenv foo%sbar
 RUN [ "$myenv" = 'foo%sbar' ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -364,7 +362,7 @@ RUN [ ! -f foo ] && [ -f bar ]
 foo
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("Dockerfile.dockerignore", ignore, 0600),
@@ -373,7 +371,6 @@ foo
 		fstest.CreateFile("foo", []byte("contents0"), 0600),
 		fstest.CreateFile("bar", []byte("contents0"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -409,12 +406,11 @@ COPY testfile $empty
 RUN [ "$(cat testfile)" == "contents0" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("testfile", []byte("contents0"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -430,7 +426,7 @@ RUN [ "$(cat testfile)" == "contents0" ]
 }
 
 func testExportCacheLoop(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheImport, integration.FeatureCacheBackendLocal)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport, workers.FeatureCacheImport, workers.FeatureCacheBackendLocal)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -449,12 +445,11 @@ FROM scratch
 COPY --from=base2 /foo /f
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("hello.txt", []byte("hello"), 0600),
 	)
-	require.NoError(t, err)
 
 	cacheDir := t.TempDir()
 
@@ -520,13 +515,12 @@ COPY bar fordarwin
 FROM stage-$TARGETOS
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("data"), 0600),
 		fstest.CreateFile("bar", []byte("data2"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -594,11 +588,10 @@ WORKDIR /foo
 WORKDIR /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -632,11 +625,10 @@ func testCacheReleased(t *testing.T, sb integration.Sandbox) {
 FROM busybox
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -669,12 +661,11 @@ FROM scratch
 ENV foo bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile.web", dockerfile, 0600),
 		fstest.Symlink("Dockerfile.web", "Dockerfile"),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -752,12 +743,11 @@ RUN e="300:400"; p="/file"                         ; a=` + "`" + `stat -c "%u:%g
  && e="300:400"; p="/existingdir/subdir/nestedfile"; a=` + "`" + `stat -c "%u:%g" "$p"` + "`" + `; if [ "$a" != "$e" ]; then echo "incorrect ownership on $p. expected $e, got $a"; exit 1; fi
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile.web", dockerfile, 0600),
 		fstest.Symlink("Dockerfile.web", "Dockerfile"),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -795,14 +785,13 @@ FROM scratch
 COPY --from=base unique /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo1", []byte("foo1-data"), 0600),
 		fstest.CreateFile("foo2", []byte("foo2-data"), 0600),
 		fstest.CreateFile("bar", []byte("bar-data"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -882,12 +871,11 @@ FROM scratch
 COPY foo nomatch* /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("contents0"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -925,11 +913,10 @@ WORKDIR /mydir
 RUN [ "$(stat -c "%U %G" /mydir)" == "user user" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -956,11 +943,10 @@ FROM scratch
 COPY --from=base Dockerfile .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -986,11 +972,10 @@ WORKDIR /mydir
 RUN [ "$(stat -c "%U %G" /mydir)" == "user user" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1020,11 +1005,10 @@ RUN [ "$(stat -c "%U %G" /dest)" == "user user" ]
 RUN [ "$(stat -c "%U %G" /dest01)" == "user01 user" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1050,14 +1034,13 @@ FROM scratch
 COPY link/foo .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.Symlink("sub", "link"),
 		fstest.CreateDir("sub", 0700),
 		fstest.CreateFile("sub/foo", []byte(`contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1095,11 +1078,10 @@ COPY --from=build /sub/foo .
 COPY --from=build /sub2/foo bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1134,12 +1116,11 @@ FROM scratch
 COPY . /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateSocket("socket.sock", 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1176,11 +1157,10 @@ ENTRYPOINT ["/nosuchcmd"]
 RUN ["ls"]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1209,11 +1189,10 @@ FROM scratch
 COPY --from=build /out .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1253,11 +1232,10 @@ FROM scratch
 COPY --from=build /out .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1285,7 +1263,7 @@ COPY --from=build /out .
 }
 
 func testDefaultShellAndPath(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -1294,11 +1272,10 @@ ENTRYPOINT foo bar
 COPY Dockerfile .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1373,7 +1350,7 @@ COPY Dockerfile .
 }
 
 func testExportMultiPlatform(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureMultiPlatform)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureMultiPlatform)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -1384,7 +1361,7 @@ LABEL target=$TARGETPLATFORM
 COPY arch-$TARGETARCH whoami
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("arch-arm", []byte(`i am arm`), 0600),
@@ -1392,7 +1369,6 @@ COPY arch-$TARGETARCH whoami
 		fstest.CreateFile("arch-s390x", []byte(`i am s390x`), 0600),
 		fstest.CreateFile("arch-ppc64le", []byte(`i am ppc64le`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1517,13 +1493,12 @@ FROM scratch
 COPY foo /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateDir("foo", 0700),
 		fstest.CreateFile("foo/bar", []byte(`contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1537,13 +1512,11 @@ COPY foo /
 	}, nil)
 	require.NoError(t, err)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`contents2`), 0600),
 	)
-	require.NoError(t, err)
-
 	destDir := t.TempDir()
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -1573,12 +1546,11 @@ FROM scratch
 COPY foo /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1619,14 +1591,13 @@ COPY foo /
 COPY foo/sub bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("bar", []byte(`bar-contents`), 0600),
 		fstest.CreateDir("foo", 0700),
 		fstest.Symlink("../bar", "foo/sub"),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1650,7 +1621,7 @@ COPY foo /
 COPY sub/l* alllinks/
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("bar", []byte(`bar-contents`), 0600),
@@ -1663,7 +1634,6 @@ COPY sub/l* alllinks/
 		fstest.Symlink("baz", "sub/second"),
 		fstest.CreateFile("sub/baz", []byte(`baz-contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1765,11 +1735,10 @@ FROM scratch
 CMD ["test"]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1798,11 +1767,10 @@ SHELL ["ls"]
 ENTRYPOINT my entrypoint
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target = "docker.io/moby/cmdoverridetest2:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -1857,11 +1825,10 @@ FROM scratch
 LABEL foo=bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -1890,12 +1857,11 @@ LABEL bar=baz
 COPY foo .
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foo-contents"), 0600),
 	)
-	require.NoError(t, err)
 
 	target = "docker.io/moby/testpullscratch2:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -1978,11 +1944,10 @@ ARG tag=nosuchtag
 FROM busybox:${tag}
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2014,12 +1979,11 @@ func testDockerfileDirs(t *testing.T, sb integration.Sandbox) {
 	RUN cmp -s foo foo3
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("bar"), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2027,7 +1991,7 @@ func testDockerfileDirs(t *testing.T, sb integration.Sandbox) {
 	cmd := sb.Cmd(args)
 	require.NoError(t, cmd.Run())
 
-	_, err = os.Stat(trace)
+	_, err := os.Stat(trace)
 	require.NoError(t, err)
 
 	// relative urls
@@ -2042,17 +2006,15 @@ func testDockerfileDirs(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	// different context and dockerfile directories
-	dir1, err := integration.Tmpdir(
+	dir1 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
-	dir2, err := integration.Tmpdir(
+	dir2 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("foo", []byte("bar"), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir2, dir1)
 	defer os.RemoveAll(trace)
@@ -2076,11 +2038,10 @@ func testDockerfileInvalidCommand(t *testing.T, sb integration.Sandbox) {
 	RUN invalidcmd
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2088,7 +2049,7 @@ func testDockerfileInvalidCommand(t *testing.T, sb integration.Sandbox) {
 	cmd := sb.Cmd(args)
 	stdout := new(bytes.Buffer)
 	cmd.Stderr = stdout
-	err = cmd.Run()
+	err := cmd.Run()
 	require.Error(t, err)
 	require.Contains(t, stdout.String(), "/bin/sh -c invalidcmd")
 	require.Contains(t, stdout.String(), "did not complete successfully")
@@ -2102,11 +2063,10 @@ func testDockerfileInvalidInstruction(t *testing.T, sb integration.Sandbox) {
 	FNTRYPOINT ["/bin/sh", "-c", "echo invalidinstruction"]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2152,11 +2112,10 @@ FROM scratch
 ADD %s /dest/
 `, server.URL+"/foo"))
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2164,7 +2123,7 @@ ADD %s /dest/
 	destDir := t.TempDir()
 
 	cmd := sb.Cmd(args + fmt.Sprintf(" --output type=local,dest=%s", destDir))
-	err = cmd.Run()
+	err := cmd.Run()
 	require.NoError(t, err)
 
 	dt, err := os.ReadFile(filepath.Join(destDir, "dest/foo"))
@@ -2177,11 +2136,10 @@ FROM scratch
 ADD %s /dest/
 `, server.URL+"/"))
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2226,12 +2184,11 @@ FROM scratch
 ADD t.tar /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("t.tar", buf.Bytes(), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2258,12 +2215,11 @@ FROM scratch
 ADD t.tar.gz /
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("t.tar.gz", buf2.Bytes(), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2283,12 +2239,11 @@ FROM scratch
 COPY t.tar.gz /
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("t.tar.gz", buf2.Bytes(), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2318,11 +2273,10 @@ FROM scratch
 ADD %s /
 `, server.URL+"/t.tar.gz"))
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2342,11 +2296,10 @@ FROM scratch
 ADD %s /newname.tar.gz
 `, server.URL+"/t.tar.gz"))
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace = f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2399,13 +2352,12 @@ FROM scratch
 ADD *.tar /dest
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("t.tar", buf.Bytes(), 0600),
 		fstest.CreateFile("b.tar", buf2.Bytes(), 0600),
 	)
-	require.NoError(t, err)
 
 	destDir := t.TempDir()
 
@@ -2447,12 +2399,11 @@ ADD --chown=${owner}:${group} foo /
 RUN [ "$(stat -c "%u %G" /foo)" == "1000 nobody" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`foo-contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2493,13 +2444,12 @@ ADD t.tar /
 COPY foo /symlink/
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", expectedContent, 0600),
 		fstest.CreateFile("t.tar", buf.Bytes(), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
@@ -2527,18 +2477,17 @@ FROM scratch
 ENV foo=bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
 
 	target := "example.com/moby/dockerfilescratch:test"
 	cmd := sb.Cmd(args + " --output type=image,name=" + target)
-	err = cmd.Run()
+	err := cmd.Run()
 	require.NoError(t, err)
 
 	client, err := newContainerd(cdAddress)
@@ -2582,7 +2531,7 @@ ENV foo=bar
 }
 
 func testExposeExpansion(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -2592,11 +2541,10 @@ EXPOSE $PORTS
 EXPOSE 5000
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2672,7 +2620,7 @@ Dockerfile
 .dockerignore
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`foo-contents`), 0600),
@@ -2681,7 +2629,6 @@ Dockerfile
 		fstest.CreateFile("bay", []byte(`bay-contents`), 0600),
 		fstest.CreateFile(".dockerignore", dockerignore, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2736,12 +2683,11 @@ FROM scratch
 COPY . .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile(".dockerignore", []byte("!\n"), 0600),
 	)
-	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(sb.Context(), 15*time.Second)
 	defer cancel()
@@ -2772,11 +2718,10 @@ func testDockerfileLowercase(t *testing.T, sb integration.Sandbox) {
 	dockerfile := []byte(`FROM scratch
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	ctx := sb.Context()
 
@@ -2810,17 +2755,16 @@ RUN echo bar > foo4
 RUN ["ls"]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("contents0"), 0600),
 	)
-	require.NoError(t, err)
 
 	args, trace := f.DFCmdArgs(dir, dir)
 	defer os.RemoveAll(trace)
 
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 
 	target := "example.com/moby/dockerfilescratch:test"
 	cmd := sb.Cmd(args + " --output type=image,name=" + target)
@@ -2874,7 +2818,7 @@ RUN ["ls"]
 }
 
 func testUser(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -2937,11 +2881,10 @@ COPY --from=base /out /
 USER nobody
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3034,11 +2977,10 @@ USER daemon
 RUN [ "$(id)" = "uid=1(daemon) gid=1(daemon) groups=1(daemon)" ]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3071,14 +3013,13 @@ FROM scratch
 COPY --from=base /out /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`foo-contents`), 0600),
 		fstest.CreateDir("bar", 0700),
 		fstest.CreateFile("bar/sub", nil, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3134,13 +3075,12 @@ FROM scratch
 COPY --from=base /out /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`foo-contents`), 0600),
 		fstest.CreateFile("bar", []byte(`bar-contents`), 0700),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3188,7 +3128,7 @@ COPY files/foo.go dest/foo.go
 COPY files dest
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateDir("sub", 0700),
@@ -3198,7 +3138,6 @@ COPY files dest
 		fstest.CreateDir("files", 0700),
 		fstest.CreateFile("files/foo.go", []byte(`foo.go-contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3238,13 +3177,11 @@ ENV FOO bar
 COPY $FOO baz
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("bar", []byte(`bar-contents`), 0600),
 	)
-
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3287,7 +3224,7 @@ COPY sub/dir1/. subdest5
 COPY sub/dir1 subdest6
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo.go", []byte(`foo-contents`), 0600),
@@ -3297,7 +3234,6 @@ COPY sub/dir1 subdest6
 		fstest.CreateDir("sub/dir1/dir2", 0700),
 		fstest.CreateFile("sub/dir1/dir2/foo", []byte(`foo-contents`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3387,12 +3323,11 @@ COPY foo ../
 RUN sh -c "[ $(cat /test5/foo) = 'hello' ]"
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte(`hello`), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3433,11 +3368,10 @@ FROM scratch
 COPY --from=build /dest /dest
 `, server.URL+"/foo"))
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3627,11 +3561,10 @@ FROM scratch
 COPY --from=busybox /etc/passwd test
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3667,12 +3600,10 @@ FROM scratch
 COPY --from=golang /usr/bin/go go
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
-
 	destDir = t.TempDir()
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -3705,12 +3636,11 @@ COPY --from=staGE0 bar baz
 FROM scratch
 COPY --from=stage1 baz bax
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foo-contents"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3741,18 +3671,17 @@ COPY --from=stage1 baz bax
 }
 
 func testLabels(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
 FROM scratch
 LABEL foo=bar
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3820,12 +3749,11 @@ FROM alpine
 COPY file* /files/
 RUN ls /files/file1
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("file1", []byte("foo"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3853,7 +3781,7 @@ RUN ls /files/file1
 }
 
 func testOnBuildCleared(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	f := getFrontend(t, sb)
 
 	registry, err := sb.NewRegistry()
@@ -3867,11 +3795,10 @@ FROM busybox
 ONBUILD RUN mkdir -p /out && echo -n 11 >> /out/foo
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3900,11 +3827,10 @@ ONBUILD RUN mkdir -p /out && echo -n 11 >> /out/foo
 	FROM %s 
 	`, target))
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target2 := registry + "/buildkit/testonbuild:child"
 
@@ -3931,12 +3857,10 @@ ONBUILD RUN mkdir -p /out && echo -n 11 >> /out/foo
 	COPY --from=base /out /
 	`, target2))
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
-
 	destDir := t.TempDir()
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -3959,11 +3883,11 @@ ONBUILD RUN mkdir -p /out && echo -n 11 >> /out/foo
 }
 
 func testCacheMultiPlatformImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureDirectPush,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheBackendInline,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureDirectPush,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheBackendInline,
+		workers.FeatureCacheBackendRegistry,
 	)
 	f := getFrontend(t, sb)
 
@@ -3982,11 +3906,10 @@ COPY --from=base unique /
 COPY --from=base arch /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4087,7 +4010,7 @@ COPY --from=base arch /
 }
 
 func testImageManifestCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheBackendLocal)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport, workers.FeatureCacheBackendLocal)
 	f := getFrontend(t, sb)
 
 	registry, err := sb.NewRegistry()
@@ -4106,12 +4029,11 @@ COPY --from=base const /
 COPY --from=base unique /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foobar"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4190,7 +4112,7 @@ COPY --from=base unique /
 	require.Equal(t, string(dt), string(dt2))
 }
 func testCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheBackendLocal)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport, workers.FeatureCacheBackendLocal)
 	f := getFrontend(t, sb)
 
 	registry, err := sb.NewRegistry()
@@ -4209,12 +4131,11 @@ COPY --from=base const /
 COPY --from=base unique /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foobar"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4282,7 +4203,7 @@ COPY --from=base unique /
 }
 
 func testReproducibleIDs(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -4291,12 +4212,11 @@ ENV foo=bar
 COPY foo /
 RUN echo bar > bar
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foo-contents"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4368,12 +4288,11 @@ COPY foo /
 RUN echo bar > bar
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("foobar"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4446,11 +4365,10 @@ FROM scratch
 COPY --from=s0 unique /
 COPY --from=s1 unique2 /
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4526,13 +4444,12 @@ FROM build-${TARGETOS}
 COPY foo2 bar2
 `, runtime.GOOS))
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("d0"), 0600),
 		fstest.CreateFile("foo2", []byte("d1"), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4577,11 +4494,10 @@ FROM scratch
 COPY --from=build out .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4631,11 +4547,10 @@ FROM scratch
 COPY --from=build /out /
 
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4795,11 +4710,10 @@ func testTarContextExternalDockerfile(t *testing.T, sb integration.Sandbox) {
 FROM scratch
 COPY foo bar
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4844,12 +4758,11 @@ func testFrontendUseForwardedSolveResults(t *testing.T, sb integration.Sandbox) 
 FROM scratch
 COPY foo foo2
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("foo", []byte("data"), 0600),
 	)
-	require.NoError(t, err)
 
 	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
 		res, err := c.Solve(ctx, gateway.SolveRequest{
@@ -4938,11 +4851,10 @@ FROM scratch
 COPY foo foo2
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		Exports: []client.ExportEntry{
@@ -4980,11 +4892,10 @@ FROM scratch
 COPY Dockerfile Dockerfile
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	called := false
 
@@ -5054,11 +4965,10 @@ RUN echo $HOSTNAME | grep foo
 RUN echo $(hostname) | grep foo
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -5112,11 +5022,10 @@ FROM scratch
 COPY --from=base /shmsize /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -5155,11 +5064,10 @@ FROM scratch
 COPY --from=base /ulimit /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -5219,11 +5127,10 @@ FROM scratch
 COPY --from=base /out /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -5272,11 +5179,10 @@ FROM scratch
 COPY --from=base /out /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5304,7 +5210,7 @@ COPY --from=base /out /
 	require.NoError(t, err)
 	require.True(t, len(dt) > 0)
 
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 
 	// Now test with an image with custom envs
 	dockerfile = []byte(`
@@ -5313,11 +5219,10 @@ ENV PATH=/foobar:$PATH
 ENV FOOBAR=foobar
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -5354,11 +5259,10 @@ COPY --from=base /env_path /
 COPY --from=base /env_foobar /
 	`)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f = getFrontend(t, sb)
 
@@ -5395,7 +5299,7 @@ COPY --from=base /env_foobar /
 }
 
 func testNamedImageContextPlatform(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -5412,11 +5316,10 @@ func testNamedImageContextPlatform(t *testing.T, sb integration.Sandbox) {
 	dockerfile := []byte(`FROM --platform=$BUILDPLATFORM alpine:latest`)
 	target := registry + "/buildkit/testnamedimagecontextplatform:latest"
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5445,11 +5348,10 @@ FROM --platform=$BUILDPLATFORM busybox AS target
 RUN echo hello
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f = getFrontend(t, sb)
 
@@ -5469,7 +5371,7 @@ RUN echo hello
 }
 
 func testNamedImageContextTimestamps(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -5488,11 +5390,10 @@ func testNamedImageContextTimestamps(t *testing.T, sb integration.Sandbox) {
 FROM alpine
 RUN echo foo >> /test
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target := registry + "/buildkit/testnamedimagecontexttimestamps:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -5517,11 +5418,10 @@ RUN echo foo >> /test
 	img, err := testutil.ReadImage(sb.Context(), provider, desc)
 	require.NoError(t, err)
 
-	dirDerived, err := integration.Tmpdir(
+	dirDerived := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	targetDerived := registry + "/buildkit/testnamedimagecontexttimestampsderived:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -5569,11 +5469,10 @@ hello world!
 EOF
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5620,21 +5519,19 @@ FROM scratch
 COPY --from=base /o* /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	outf := []byte(`dummy-result`)
 
-	dir2, err := integration.Tmpdir(
+	dir2 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("out", outf, 0600),
 		fstest.CreateFile("out2", outf, 0600),
 		fstest.CreateFile(".dockerignore", []byte("out2\n"), 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5668,7 +5565,7 @@ COPY --from=base /o* /
 }
 
 func testNamedOCILayoutContext(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureOCILayout)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureOCILayout)
 	// how this test works:
 	// 1- we use a regular builder with a dockerfile to create an image two files: "out" with content "first", "out2" with content "second"
 	// 2- we save the output to an OCI layout dir
@@ -5690,11 +5587,10 @@ func testNamedOCILayoutContext(t *testing.T, sb integration.Sandbox) {
 	RUN sh -c "echo -n second > out2"
 	ENV foo=bar
 	`)
-	inDir, err := integration.Tmpdir(
+	inDir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", ociDockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5760,11 +5656,10 @@ COPY --from=base /test/o* /
 COPY --from=imported /test/outfoo /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	destDir := t.TempDir()
 
@@ -5806,7 +5701,7 @@ COPY --from=imported /test/outfoo /
 }
 
 func testNamedOCILayoutContextExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureOCILayout)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureOCILayout)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -5820,11 +5715,10 @@ FROM scratch
 WORKDIR /test
 ENV foo=bar
 	`)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -5871,11 +5765,10 @@ ENV foo=bar
 FROM nonexistent AS base
 `)
 
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	outW = bytes.NewBuffer(nil)
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -5930,11 +5823,10 @@ ENV FOO=bar
 RUN echo first > /out
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	dockerfile2 := []byte(`
 FROM base AS build
@@ -5943,11 +5835,10 @@ FROM scratch
 COPY --from=build /foo /out /
 `)
 
-	dir2, err := integration.Tmpdir(
+	dir2 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile2, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -6027,7 +5918,7 @@ COPY --from=build /foo /out /
 }
 
 func testNamedMultiplatformInputContext(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureMultiPlatform)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureMultiPlatform)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -6041,11 +5932,10 @@ ENV FOO=bar-$TARGETARCH
 RUN echo "foo $TARGETARCH" > /out
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	dockerfile2 := []byte(`
 FROM base AS build
@@ -6054,11 +5944,10 @@ FROM scratch
 COPY --from=build /foo /out /
 `)
 
-	dir2, err := integration.Tmpdir(
+	dir2 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile2, 0600),
 	)
-	require.NoError(t, err)
 
 	f := getFrontend(t, sb)
 
@@ -6175,7 +6064,7 @@ COPY --from=build /foo /out /
 }
 
 func testSourceDateEpochWithoutExporter(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureSourceDateEpoch)
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`
@@ -6184,12 +6073,10 @@ ENTRYPOINT foo bar
 COPY Dockerfile .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -6251,7 +6138,7 @@ COPY Dockerfile .
 }
 
 func testSBOMScannerImage(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureSBOM)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -6280,11 +6167,10 @@ COPY <<-"EOF" /scan.sh
 EOF
 CMD sh /scan.sh
 `)
-	scannerDir, err := integration.Tmpdir(
+	scannerDir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	scannerTarget := registry + "/buildkit/testsbomscanner:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -6310,11 +6196,10 @@ COPY <<EOF /foo
 data
 EOF
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target := registry + "/buildkit/testsbomscannertarget:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -6357,7 +6242,7 @@ EOF
 }
 
 func testSBOMScannerArgs(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureSBOM)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -6398,11 +6283,10 @@ EOF
 CMD sh /scan.sh
 `)
 
-	scannerDir, err := integration.Tmpdir(
+	scannerDir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	scannerTarget := registry + "/buildkit/testsbomscannerargs:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -6430,11 +6314,10 @@ data
 EOF
 FROM base
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target := registry + "/buildkit/testsbomscannerargstarget1:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -6495,11 +6378,10 @@ RUN non-existent-command-would-fail
 FROM base
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 `)
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	// scan an image with additional sboms
 	target = registry + "/buildkit/testsbomscannertarget2:latest"
@@ -6598,11 +6480,10 @@ COPY Dockerfile \
 .
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
 	c, err := client.New(sb.Context(), sb.Address())
@@ -6662,13 +6543,20 @@ COPY Dockerfile \
 }
 
 func testReproSourceDateEpoch(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureSourceDateEpoch)
 	if sb.Snapshotter() == "native" {
 		t.Skip("the digest is not reproducible with the \"native\" snapshotter because hardlinks are processed in a different way: https://github.com/moby/buildkit/pull/3456#discussion_r1062650263")
 	}
+
+	registry, err := sb.NewRegistry()
+	if errors.Is(err, integration.ErrRequirements) {
+		t.Skip(err.Error())
+	}
+	require.NoError(t, err)
+
 	f := getFrontend(t, sb)
 
-	tm := time.Date(2023, time.January, 10, 12, 34, 56, 0, time.UTC)
+	tm := time.Date(2023, time.January, 10, 12, 34, 56, 0, time.UTC) // 1673354096
 	t.Logf("SOURCE_DATE_EPOCH=%d", tm.Unix())
 
 	dockerfile := []byte(`# The base image cannot be busybox, due to https://github.com/moby/buildkit/issues/3455
@@ -6682,35 +6570,23 @@ RUN touch -d '2030-01-01 12:34:56' /foo-2030.1
 RUN rm -f /foo.1
 RUN rm -f /foo-2010.1
 RUN rm -f /foo-2030.1
-
-# Limit the timestamp upper bound to SOURCE_DATE_EPOCH.
-# Workaround for https://github.com/moby/buildkit/issues/3180
-ARG SOURCE_DATE_EPOCH
-RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) -newermt "@${SOURCE_DATE_EPOCH}" -writable -xdev | xargs touch --date="@${SOURCE_DATE_EPOCH}" --no-dereference
-
-# Squash the entire stage for resetting the whiteout timestamps.
-# Workaround for https://github.com/moby/buildkit/issues/3168
-FROM scratch
-COPY --from=0 / /
 `)
 
-	const expectedDigest = "sha256:d286483eccf4d57c313a3f389cdc196e668d914d319c574b15aabdf1963c5eeb"
+	const expectedDigest = "sha256:29f2980a804038b0f910af98e9ddb18bfa4d5514995ee6bb4343ddf621a4e183"
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	c, err := client.New(sb.Context(), sb.Address())
+	ctx := sb.Context()
+	c, err := client.New(ctx, sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
 
-	outDigester := digest.SHA256.Digester()
-	outW := &iohelper.NopWriteCloser{Writer: outDigester.Hash()}
-
-	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
+	target := registry + "/buildkit/testreprosourcedateepoch:" + fmt.Sprintf("%d", tm.Unix())
+	solveOpt := client.SolveOpt{
 		FrontendAttrs: map[string]string{
 			"build-arg:SOURCE_DATE_EPOCH": fmt.Sprintf("%d", tm.Unix()),
 			"platform":                    "linux/amd64",
@@ -6721,17 +6597,62 @@ COPY --from=0 / /
 		},
 		Exports: []client.ExportEntry{
 			{
-				Type:   client.ExporterOCI,
-				Output: fixedWriteCloser(outW),
+				Type: client.ExporterImage,
+				Attrs: map[string]string{
+					"name":              target,
+					"push":              "true",
+					"oci-mediatypes":    "true",
+					"rewrite-timestamp": "true",
+				},
 			},
 		},
-	}, nil)
+		CacheExports: []client.CacheOptionsEntry{
+			{
+				Type: "registry",
+				Attrs: map[string]string{
+					"ref":            target + "-cache",
+					"oci-mediatypes": "true",
+					"image-manifest": "true",
+				},
+			},
+		},
+	}
+	_, err = f.Solve(ctx, c, solveOpt, nil)
 	require.NoError(t, err)
 
-	outDigest := outDigester.Digest().String()
-	t.Logf("OCI archive digest=%q", outDigest)
+	desc, manifest := readImage(t, ctx, target)
+	_, cacheManifest := readImage(t, ctx, target+"-cache")
 	t.Log("The digest may change depending on the BuildKit version, the snapshotter configuration, etc.")
-	require.Equal(t, expectedDigest, outDigest)
+	require.Equal(t, expectedDigest, desc.Digest.String())
+	// Image layers must have rewritten-timestamp
+	for _, l := range manifest.Layers {
+		require.Equal(t, fmt.Sprintf("%d", tm.Unix()), l.Annotations["buildkit/rewritten-timestamp"])
+	}
+	// Cache layers must *not* have rewritten-timestamp
+	for _, l := range cacheManifest.Layers {
+		require.Empty(t, l.Annotations["buildkit/rewritten-timestamp"])
+	}
+
+	// Build again, but without rewrite-timestamp
+	solveOpt2 := solveOpt
+	delete(solveOpt2.Exports[0].Attrs, "rewrite-timestamp")
+	_, err = f.Solve(ctx, c, solveOpt2, nil)
+	require.NoError(t, err)
+	_, manifest2 := readImage(t, ctx, target)
+	for _, l := range manifest2.Layers {
+		require.Empty(t, l.Annotations["buildkit/rewritten-timestamp"])
+	}
+}
+
+//nolint:revive // context-as-argument: context.Context should be the first parameter of a function
+func readImage(t *testing.T, ctx context.Context, ref string) (ocispecs.Descriptor, ocispecs.Manifest) {
+	desc, provider, err := contentutil.ProviderFromRef(ref)
+	require.NoError(t, err)
+	dt, err := content.ReadBlob(ctx, provider, desc)
+	require.NoError(t, err)
+	var manifest ocispecs.Manifest
+	require.NoError(t, json.Unmarshal(dt, &manifest))
+	return desc, manifest
 }
 
 func testNilContextInSolveGateway(t *testing.T, sb integration.Sandbox) {
@@ -6770,17 +6691,14 @@ COPY test-%C3%A4%C3%B6%C3%BC.txt /
 COPY test+aou.txt /
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 		fstest.CreateFile("test-äöü.txt", []byte("foo"), 0644),
 		fstest.CreateFile("test-%C3%A4%C3%B6%C3%BC.txt", []byte("bar"), 0644),
 		fstest.CreateFile("test+aou.txt", []byte("baz"), 0644),
 	)
-	require.NoError(t, err)
-
-	destDir, err := integration.Tmpdir(t)
-	require.NoError(t, err)
+	destDir := integration.Tmpdir(t)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		Exports: []client.ExportEntry{

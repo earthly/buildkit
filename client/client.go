@@ -203,16 +203,29 @@ func (c *Client) Dialer() session.Dialer {
 }
 
 func (c *Client) Wait(ctx context.Context) error {
-	opts := []grpc.CallOption{grpc.WaitForReady(true)}
-	_, err := c.ControlClient().Info(ctx, &controlapi.InfoRequest{}, opts...)
-	if err != nil {
-		if code := grpcerrors.Code(err); code == codes.Unimplemented {
+	for {
+		_, err := c.ControlClient().Info(ctx, &controlapi.InfoRequest{})
+		if err == nil {
+			return nil
+		}
+
+		switch code := grpcerrors.Code(err); code {
+		case codes.Unavailable:
+		case codes.Unimplemented:
 			// only buildkit v0.11+ supports the info api, but an unimplemented
 			// response error is still a response so we can ignore it
 			return nil
+		default:
+			return err
 		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+		c.conn.ResetConnectBackoff()
 	}
-	return err
 }
 
 func (c *Client) Close() error {

@@ -5,12 +5,12 @@ import (
 	_ "crypto/sha256" // for opencontainers/go-digest
 	"encoding/json"
 	"fmt"
-	neturl "net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
-	"github.com/docker/distribution/reference"
+	"github.com/distribution/reference"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/apicaps"
 	"github.com/moby/buildkit/util/gitutil"
@@ -228,7 +228,7 @@ type ImageInfo struct {
 // Git returns a state that represents a git repository.
 // Example:
 //
-//	st := llb.Git("https://github.com/moby/buildkit.git#v0.11.6")
+//	st := llb.Git("https://github.com/moby/buildkit.git", "v0.11.6")
 //
 // The example fetches the v0.11.6 tag of the buildkit repository.
 // You can also use a commit hash or a branch name.
@@ -239,37 +239,30 @@ type ImageInfo struct {
 //
 // By default the git repository is cloned with `--depth=1` to reduce the amount of data downloaded.
 // Additionally the ".git" directory is removed after the clone, you can keep ith with the [KeepGitDir] [GitOption].
-func Git(remote, ref string, opts ...GitOption) State {
-	url := strings.Split(remote, "#")[0]
-
-	remoteSuffix, protocolType := gitutil.ParseProtocol(remote)
-
-	var sshHost string
-	if protocolType == gitutil.SSHProtocol {
-		if sshutil.IsImplicitSSHTransport(remote) {
-			parts := strings.SplitN(remoteSuffix, ":", 2)
-			if len(parts) == 2 {
-				sshHost = parts[0]
-				// keep remote consistent with http(s) version
-				remoteSuffix = parts[0] + "/" + parts[1]
-			}
-		} else {
-			p, err := neturl.Parse(remote)
-			if err != nil {
-				// function doesn't return errors; previously errors were just ignored
-				panic(fmt.Sprintf("failed to parse remote %v: %v", remote, err))
-			}
-			sshHost = strings.TrimSuffix(p.Host, ":22")
-		}
-	}
-	if protocolType == gitutil.UnknownProtocol {
+func Git(url, ref string, opts ...GitOption) State {
+	remote, err := gitutil.ParseURL(url)
+	if errors.Is(err, gitutil.ErrUnknownProtocol) {
 		url = "https://" + url
+		remote, err = gitutil.ParseURL(url)
+	}
+	if remote != nil {
+		remote.Fragment = ""
+		url = remote.String()
 	}
 
-	id := remoteSuffix
-
-	if ref != "" {
-		id += "#" + ref
+	var id string
+	if err != nil {
+		// If we can't parse the URL, just use the full URL as the ID. The git
+		// operation will fail later on.
+		id = url
+	} else {
+		// We construct the ID manually here, so that we can create the same ID
+		// for different protocols (e.g. https and ssh) that have the same
+		// host/path/fragment combination.
+		id = remote.Host + path.Join("/", remote.Path)
+		if ref != "" {
+			id += "#" + ref
+		}
 	}
 
 	gi := &GitInfo{
@@ -308,12 +301,16 @@ func Git(remote, ref string, opts ...GitOption) State {
 			addCap(&gi.Constraints, pb.CapSourceGitHTTPAuth)
 		}
 	}
-	if protocolType == gitutil.SSHProtocol {
+	if remote != nil && remote.Scheme == gitutil.SSHProtocol {
 		if gi.KnownSSHHosts != "" {
 			attrs[pb.AttrKnownSSHHosts] = gi.KnownSSHHosts
-		} else if sshHost != "" {
-			keyscan, err := sshutil.SSHKeyScan(sshHost)
-			if err != nil {
+		} else {
+			keyscan, err := sshutil.SSHKeyScan(remote.Host)
+			if err == nil {
+				// best effort
+				attrs[pb.AttrKnownSSHHosts] = keyscan
+			} else {
+				// earthly-specific: panic in order to raise errors (should be caught by earthly cli)
 				panic(fmt.Sprintf("Git(%s,%s) failed to scan ssh keys: %v", remote, ref, err))
 			}
 			attrs[pb.AttrKnownSSHHosts] = keyscan
@@ -343,15 +340,6 @@ func (fn gitOptionFunc) SetGitOption(gi *GitInfo) {
 	fn(gi)
 }
 
-// GitLogLevel is earthly-specific
-type GitLogLevel int
-
-const (
-	GitLogLevelDefault GitLogLevel = iota
-	GitLogLevelDebug
-	GitLogLevelTrace
-)
-
 type GitInfo struct {
 	constraintsWrapper
 	KeepGitDir       bool
@@ -360,8 +348,8 @@ type GitInfo struct {
 	addAuthCap       bool
 	KnownSSHHosts    string
 	MountSSHSock     string
-	LFSInclude       string      // earthly-specific
-	LogLevel         GitLogLevel // earthly-specific
+	LFSInclude       string              // earthly-specific
+	LogLevel         gitutil.GitLogLevel // earthly-specific
 }
 
 func KeepGitDir() GitOption {
@@ -378,7 +366,7 @@ func LFSInclude(path string) GitOption {
 }
 
 // LogLevel is earthly-specific and dynamically controls git logging levels without restarting buildkit
-func LogLevel(level GitLogLevel) GitOption {
+func LogLevel(level gitutil.GitLogLevel) GitOption {
 	return gitOptionFunc(func(gi *GitInfo) {
 		gi.LogLevel = level
 	})

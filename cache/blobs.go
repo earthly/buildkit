@@ -14,6 +14,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/compression"
+	"github.com/moby/buildkit/util/converter"
 	"github.com/moby/buildkit/util/flightcontrol"
 	"github.com/moby/buildkit/util/winlayers"
 	digest "github.com/opencontainers/go-digest"
@@ -188,7 +189,7 @@ func computeBlobChain(ctx context.Context, sr *immutableRef, createIfNeeded bool
 					}
 				}
 
-				if desc.Digest == "" && !isTypeWindows(sr) && comp.Type.NeedsComputeDiffBySelf() {
+				if desc.Digest == "" && !isTypeWindows(sr) && comp.Type.NeedsComputeDiffBySelf(comp) {
 					// These compression types aren't supported by containerd differ. So try to compute diff on buildkit side.
 					// This case can be happen on containerd worker + non-overlayfs snapshotter (e.g. native).
 					// See also: https://github.com/containerd/containerd/issues/4263
@@ -422,7 +423,7 @@ func ensureCompression(ctx context.Context, ref *immutableRef, comp compression.
 		}
 
 		// Resolve converters
-		layerConvertFunc, err := getConverter(ctx, ref.cm.ContentStore, desc, comp)
+		layerConvertFunc, err := converter.New(ctx, ref.cm.ContentStore, desc, comp)
 		if err != nil {
 			return struct{}{}, err
 		} else if layerConvertFunc == nil {

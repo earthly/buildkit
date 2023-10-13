@@ -7,7 +7,7 @@ function clean() {
 }
 
 iidfile=$(mktemp -t docker-iidfile.XXXXXXXXXX)
-DOCKER_BUILDKIT=1 docker build --iidfile $iidfile --target dev-env .
+DOCKER_BUILDKIT=1 docker build --iidfile $iidfile --build-arg BUILDKIT_DEBUG --target dev-env .
 
 trap clean EXIT
 SSH=

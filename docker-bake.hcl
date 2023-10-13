@@ -14,6 +14,30 @@ variable "BUILDKITD_TAGS" {
   default = null
 }
 
+variable "HTTP_PROXY" {
+  default = null
+}
+
+variable "HTTPS_PROXY" {
+  default = null
+}
+
+variable "NO_PROXY" {
+  default = null
+}
+
+variable "GOBUILDFLAGS" {
+  default = null
+}
+
+variable "VERIFYFLAGS" {
+  default = null
+}
+
+variable "CGO_ENABLED" {
+  default = null
+}
+
 # Defines the output folder
 variable "DESTDIR" {
   default = ""
@@ -28,6 +52,13 @@ target "_common" {
     ALPINE_VERSION = ALPINE_VERSION
     GO_VERSION = GO_VERSION
     NODE_VERSION = NODE_VERSION
+    BUILDKITD_TAGS = BUILDKITD_TAGS
+    HTTP_PROXY = HTTP_PROXY
+    HTTPS_PROXY = HTTPS_PROXY
+    NO_PROXY = NO_PROXY
+    GOBUILDFLAGS = GOBUILDFLAGS
+    VERIFYFLAGS = VERIFYFLAGS
+    CGO_ENABLED = CGO_ENABLED
     BUILDKIT_CONTEXT_KEEP_GIT_DIR = 1
   }
 }
@@ -39,9 +70,6 @@ group "default" {
 target "binaries" {
   inherits = ["_common"]
   target = "binaries"
-  args = {
-    BUILDKITD_TAGS = BUILDKITD_TAGS
-  }
   output = [bindir("build")]
 }
 
@@ -74,14 +102,33 @@ target "integration-tests-base" {
   output = ["type=cacheonly"]
 }
 
+target "integration-tests" {
+  inherits = ["integration-tests-base"]
+  target = "integration-tests"
+}
+
 group "validate" {
   targets = ["lint", "validate-vendor", "validate-doctoc", "validate-generated-files", "validate-shfmt", "validate-docs"]
 }
 
 target "lint" {
+  name = "lint-${buildtags.name}"
   inherits = ["_common"]
   dockerfile = "./hack/dockerfiles/lint.Dockerfile"
   output = ["type=cacheonly"]
+  target = buildtags.target
+  args = {
+    BUILDTAGS = buildtags.tags
+  }
+  matrix = {
+    buildtags = [
+      { name = "default", tags = "", target = "golangci-lint" },
+      { name = "labs", tags = "dfrunsecurity", target = "golangci-lint" },
+      { name = "nydus", tags = "nydus", target = "golangci-lint" },
+      { name = "yaml", tags = "", target = "yamllint" },
+      { name = "proto", tags = "", target = "protolint" },
+    ]
+  }
 }
 
 target "validate-vendor" {

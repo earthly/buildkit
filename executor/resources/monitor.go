@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/moby/buildkit/executor/resources/types"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/network"
 	"github.com/prometheus/procfs"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -54,6 +54,10 @@ func (r *cgroupRecord) Start() {
 	s := NewSampler(2*time.Second, 10, r.sample)
 	r.sampler = s.Record()
 	r.closeSampler = s.Close
+}
+
+func (r *cgroupRecord) Close() {
+	r.close()
 }
 
 func (r *cgroupRecord) CloseAsync(next func(context.Context) error) error {
@@ -160,6 +164,9 @@ func (r *nopRecord) Samples() (*types.Samples, error) {
 	return nil, nil
 }
 
+func (r *nopRecord) Close() {
+}
+
 func (r *nopRecord) CloseAsync(next func(context.Context) error) error {
 	return next(context.TODO())
 }
@@ -222,7 +229,7 @@ func NewMonitor() (*Monitor, error) {
 			return
 		}
 		if err := prepareCgroupControllers(); err != nil {
-			logrus.Warnf("failed to prepare cgroup controllers: %+v", err)
+			bklog.L.Warnf("failed to prepare cgroup controllers: %+v", err)
 		}
 	})
 
@@ -273,7 +280,7 @@ func prepareCgroupControllers() error {
 		}
 		if err := os.WriteFile(filepath.Join(defaultMountpoint, cgroupSubtreeFile), []byte("+"+c), 0); err != nil {
 			// ignore error
-			logrus.Warnf("failed to enable cgroup controller %q: %+v", c, err)
+			bklog.L.Warnf("failed to enable cgroup controller %q: %+v", c, err)
 		}
 	}
 	return nil

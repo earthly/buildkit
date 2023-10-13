@@ -246,7 +246,11 @@ func (ctx *muxVarsContext) Value(key interface{}) interface{} {
 			return ctx.vars
 		}
 
-		if v, ok := ctx.vars[strings.TrimPrefix(keyStr, "vars.")]; ok {
+		if strings.HasPrefix(keyStr, "vars.") {
+			keyStr = strings.TrimPrefix(keyStr, "vars.")
+		}
+
+		if v, ok := ctx.vars[keyStr]; ok {
 			return v
 		}
 	}

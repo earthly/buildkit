@@ -178,6 +178,7 @@ Currently, the following high-level languages has been implemented for LLB:
 -   [envd (starlark)](https://github.com/tensorchord/envd/)
 -   [Blubber](https://gitlab.wikimedia.org/repos/releng/blubber)
 -   [Bass](https://github.com/vito/bass)
+-   [kraft.yaml (Unikraft)](https://github.com/unikraft/kraftkit/tree/staging/tools/dockerfile-llb-frontend)
 -   (open a PR to add your own language)
 
 ### Exploring Dockerfiles
@@ -260,6 +261,8 @@ Keys supported by image output:
 * `name-canonical=true`: add additional canonical name `name@<digest>`
 * `compression=<uncompressed|gzip|estargz|zstd>`: choose compression type for layers newly created and cached, gzip is default value. estargz should be used with `oci-mediatypes=true`.
 * `compression-level=<value>`: compression level for gzip, estargz (0-9) and zstd (0-22)
+* `rewrite-timestamp=true` (Present in the `master` branch <!-- TODO: v0.13-->): rewrite the file timestamps to the `SOURCE_DATE_EPOCH` value.
+   See [`docs/build-repro.md`](docs/build-repro.md) for how to specify the `SOURCE_DATE_EPOCH` value.
 * `force-compression=true`: forcefully apply `compression` option to all layers (including already existing layers)
 * `store=true`: store the result images to the worker's (e.g. containerd) image store as well as ensures that the image has all blobs in the content store (default `true`). Ignored if the worker doesn't have image store (e.g. OCI worker).
 * `annotation.<key>=<value>`: attach an annotation with the respective `key` and `value` to the built image
@@ -481,7 +484,7 @@ buildctl build ... \
   --import-cache type=gha
 ```
 
-GitHub Actions cache saves both cache metadata and layers to GitHub's Cache service. This cache currently has a [size limit of 10GB](https://docs.github.com/en/actions/advanced-guides/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy) that is shared accross different caches in the repo. If you exceed this limit, GitHub will save your cache but will begin evicting caches until the total size is less than 10 GB. Recycling caches too often can result in slower runtimes overall.
+GitHub Actions cache saves both cache metadata and layers to GitHub's Cache service. This cache currently has a [size limit of 10GB](https://docs.github.com/en/actions/advanced-guides/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy) that is shared across different caches in the repo. If you exceed this limit, GitHub will save your cache but will begin evicting caches until the total size is less than 10 GB. Recycling caches too often can result in slower runtimes overall.
 
 Similarly to using [actions/cache](https://github.com/actions/cache), caches are [scoped by branch](https://docs.github.com/en/actions/advanced-guides/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache), with the default and target branches being available to every branch.
 

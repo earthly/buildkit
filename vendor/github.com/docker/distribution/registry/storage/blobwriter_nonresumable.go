@@ -1,4 +1,3 @@
-//go:build noresumabledigest
 // +build noresumabledigest
 
 package storage

@@ -12,6 +12,7 @@ import (
 	"github.com/moby/buildkit/util/entitlements"
 	"github.com/moby/buildkit/util/testutil/echoserver"
 	"github.com/moby/buildkit/util/testutil/integration"
+	"github.com/moby/buildkit/util/testutil/workers"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,11 +42,10 @@ FROM busybox
 RUN ip link show eth0
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -77,11 +77,10 @@ RUN --network=none ! ip link show eth0
 		dockerfile += "RUN ip link show eth0"
 	}
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", []byte(dockerfile), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -118,11 +117,10 @@ RUN --network=host nc 127.0.0.1 %s | grep foo
 		dockerfile += fmt.Sprintf(`RUN ! nc 127.0.0.1 %s | grep foo`, port)
 	}
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", []byte(dockerfile), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -141,7 +139,7 @@ RUN --network=host nc 127.0.0.1 %s | grep foo
 	case networkHostGranted:
 		require.NoError(t, err)
 	case networkHostDenied:
-		if !integration.IsTestDockerd() {
+		if !workers.IsTestDockerd() {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "entitlement network.host is not allowed")
 		} else {
@@ -166,11 +164,10 @@ RUN nc 127.0.0.1 %s | grep foo
 RUN --network=none ! nc -z 127.0.0.1 %s
 `, port, port)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", []byte(dockerfile), 0600),
 	)
-	require.NoError(t, err)
 
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -192,7 +189,7 @@ RUN --network=none ! nc -z 127.0.0.1 %s
 	case networkHostGranted:
 		require.NoError(t, err)
 	case networkHostDenied:
-		if !integration.IsTestDockerd() {
+		if !workers.IsTestDockerd() {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "entitlement network.host is not allowed")
 		} else {

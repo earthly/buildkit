@@ -69,6 +69,8 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -173,6 +175,12 @@ func main() {
 			Usage: "listening address (socket or tcp)",
 			Value: &cli.StringSlice{defaultConf.GRPC.Address[0]},
 		},
+		// Add format flag to control log formatter
+		cli.StringFlag{
+			Name:  "log-format",
+			Usage: "log formatter: json or text",
+			Value: "text",
+		},
 		cli.StringFlag{
 			Name:  "group",
 			Usage: "group (name or gid) which will own all Unix socket listening addresses",
@@ -202,6 +210,10 @@ func main() {
 			Name:  "allow-insecure-entitlement",
 			Usage: "allows insecure entitlements e.g. network.host, security.insecure",
 		},
+		cli.StringFlag{
+			Name:  "otel-socket-path",
+			Usage: "OTEL collector trace socket path",
+		},
 	)
 	app.Flags = append(app.Flags, appFlags...)
 	app.Flags = append(app.Flags, serviceFlags()...)
@@ -225,7 +237,16 @@ func main() {
 			return err
 		}
 
-		logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		logFormat := cfg.Log.Format
+		switch logFormat {
+		case "json":
+			logrus.SetFormatter(&logrus.JSONFormatter{})
+		case "text", "":
+			logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		default:
+			return errors.Errorf("unsupported log type %q", logFormat)
+		}
+
 		if cfg.Debug {
 			logrus.SetLevel(logrus.DebugLevel)
 		}
@@ -278,7 +299,7 @@ func main() {
 		// Stop if we are registering or unregistering against Windows SCM.
 		stop, err := registerUnregisterService(cfg.Root)
 		if err != nil {
-			logrus.Fatal(err)
+			bklog.L.Fatal(err)
 		}
 		if stop {
 			return nil
@@ -305,6 +326,7 @@ func main() {
 		}
 		defer controller.Close()
 
+		healthv1.RegisterHealthServer(server, health.NewServer())
 		controller.Register(server)
 		reflection.Register(server)
 
@@ -354,7 +376,7 @@ func main() {
 
 		// Launch as a Windows Service if necessary
 		if err := launchService(server); err != nil {
-			logrus.Fatal(err)
+			bklog.L.Fatal(err)
 		}
 
 		errCh := make(chan error, 1)
@@ -517,6 +539,10 @@ func setDefaultConfig(cfg *config.Config) {
 			appdefaults.EnsureUserAddressDir()
 		}
 	}
+
+	if cfg.OTEL.SocketPath == "" {
+		cfg.OTEL.SocketPath = appdefaults.TraceSocketPath(userns.RunningInUserNS())
+	}
 }
 
 func applyMainFlags(c *cli.Context, cfg *config.Config) error {
@@ -529,7 +555,9 @@ func applyMainFlags(c *cli.Context, cfg *config.Config) error {
 	if c.IsSet("root") {
 		cfg.Root = c.String("root")
 	}
-
+	if c.IsSet("log-format") {
+		cfg.Log.Format = c.String("log-format")
+	}
 	if c.IsSet("addr") || len(cfg.GRPC.Address) == 0 {
 		cfg.GRPC.Address = c.StringSlice("addr")
 	}
@@ -570,6 +598,11 @@ func applyMainFlags(c *cli.Context, cfg *config.Config) error {
 	if tlsca := c.String("tlscacert"); tlsca != "" {
 		cfg.GRPC.TLS.CA = tlsca
 	}
+
+	if c.IsSet("otel-socket-path") {
+		cfg.OTEL.SocketPath = c.String("otel-socket-path")
+	}
+
 	applyPlatformFlags(c)
 
 	return nil
@@ -725,7 +758,7 @@ func newController(c *cli.Context, cfg *config.Config, shutdownCh chan struct{})
 
 	var traceSocket string
 	if tc != nil {
-		traceSocket = traceSocketPath(cfg.Root)
+		traceSocket = cfg.OTEL.SocketPath
 		if err := runTraceController(traceSocket, tc); err != nil {
 			return nil, err
 		}
@@ -785,6 +818,7 @@ func newController(c *cli.Context, cfg *config.Config, shutdownCh chan struct{})
 		Entitlements:              cfg.Entitlements,
 		TraceCollector:            tc,
 		HistoryDB:                 historyDB,
+		CacheStore:                cacheStorage,
 		LeaseManager:              w.LeaseManager(),
 		ContentStore:              w.ContentStore(),
 		HistoryConfig:             cfg.History,

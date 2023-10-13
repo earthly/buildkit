@@ -47,8 +47,10 @@ Minimal support is also available on older BuildKit when using Dockerfile 1.5 fr
 buildctl build --frontend dockerfile.v0 --opt build-arg:SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) ...
 ```
 
-The `buildctl` CLI does not automatically propagate the `$SOURCE_DATE_EPOCH` environment value from the client host to the `SOURCE_DATE_EPOCH` build arg.
-However, higher level build tools, such as Docker Buildx (>= 0.10), may automatically capture the environment value.
+The `buildctl` CLI (<= 0.12) does not automatically propagate the `$SOURCE_DATE_EPOCH` environment value from the client host to the `SOURCE_DATE_EPOCH` build arg.
+<!-- TODO: s/master/v0.13/ -->
+In the `master` branch of BuildKit, the `buildctl` CLI is updated to automatically capture the environment value.
+Docker Buildx (>= 0.10) automatically captures the environment value too.
 
 The build arg value is used for:
 - the `created` timestamp in the [OCI Image Config](https://github.com/opencontainers/image-spec/blob/main/config.md#properties)
@@ -57,34 +59,14 @@ The build arg value is used for:
 - the timestamp of the files exported with the `local` exporter
 - the timestamp of the files exported with the `tar` exporter
 
-The build arg value is not used for the timestamps of the files inside the image currently ([Caveats](#caveats)).
+To apply the build arg value to the timestamps of the files inside the image, specify `rewrite-timestamp=true` as an image exporter option:
+```
+--output type=image,name=docker.io/username/image,push=true,rewrite-timestamp=true
+```
+
+<!-- TODO: s/master/v0.13/ -->
+The `rewrite-timestamp` option is only available in the `master` branch of BuildKit.
+See [v0.12 documentation](https://github.com/moby/buildkit/blob/v0.12/docs/build-repro.md#caveats) for dealing with timestamps
+in BuildKit v0.12 and v0.11.
 
 See also the [documentation](/frontend/dockerfile/docs/reference.md#buildkit-built-in-build-args) of the Dockerfile frontend.
-
-## Caveats
-### Timestamps of the files inside the image
-Currently, the `SOURCE_DATE_EPOCH` value is not used for the timestamps of the files inside the image.
-
-Workaround:
-```dockerfile
-# Limit the timestamp upper bound to SOURCE_DATE_EPOCH.
-# Workaround for https://github.com/moby/buildkit/issues/3180
-ARG SOURCE_DATE_EPOCH
-RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) -newermt "@${SOURCE_DATE_EPOCH}" -writable -xdev | xargs touch --date="@${SOURCE_DATE_EPOCH}" --no-dereference
-```
-
-The `touch` command above is [not effective](https://github.com/moby/buildkit/issues/3309) for mount point directories.
-A workaround is to create mount point directories below `/dev` (tmpfs) so that the mount points will not be included in the image layer.
-
-### Timestamps of whiteouts
-Currently, the `SOURCE_DATE_EPOCH` value is not used for the timestamps of "whiteouts" that are created on removing files.
-
-Workaround:
-```dockerfile
-# Squash the entire stage for resetting the whiteout timestamps.
-# Workaround for https://github.com/moby/buildkit/issues/3168
-FROM scratch
-COPY --from=0 / /
-```
-
-The timestamps of the regular files in the original stage are maintained in the squashed stage, so you do not need to touch the files after this `COPY` instruction.

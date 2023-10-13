@@ -1,5 +1,5 @@
-//go:build linux && !no_containerd_worker
-// +build linux,!no_containerd_worker
+//go:build linux
+// +build linux
 
 package containerd
 
@@ -10,13 +10,14 @@ import (
 
 	"github.com/moby/buildkit/util/network/netproviders"
 	"github.com/moby/buildkit/util/testutil/integration"
+	"github.com/moby/buildkit/util/testutil/workers"
 	"github.com/moby/buildkit/worker/base"
 	"github.com/moby/buildkit/worker/tests"
 	"github.com/stretchr/testify/require"
 )
 
 func init() {
-	integration.InitContainerdWorker()
+	workers.InitContainerdWorker()
 }
 
 func TestContainerdWorkerIntegration(t *testing.T) {
@@ -31,7 +32,7 @@ func TestContainerdWorkerIntegration(t *testing.T) {
 func newWorkerOpt(t *testing.T, addr string) base.WorkerOpt {
 	tmpdir := t.TempDir()
 	rootless := false
-	workerOpt, err := NewWorkerOpt(tmpdir, addr, "overlayfs", "buildkit-test", rootless, nil, nil, netproviders.Opt{Mode: "host"}, "", false, nil, "")
+	workerOpt, err := NewWorkerOpt(tmpdir, addr, "overlayfs", "buildkit-test", rootless, nil, nil, netproviders.Opt{Mode: "host"}, "", false, nil, "", nil)
 	require.NoError(t, err)
 	return workerOpt
 }

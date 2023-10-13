@@ -33,7 +33,7 @@ func NewPodmanAuthProvider(stderr io.Writer) session.Attachable {
 		// See here for more details: https://docs.podman.io/en/latest/markdown/podman-login.1.html
 		bklog.G(context.TODO()).Debugf("WARNING: XDG_RUNTIME_DIR is not set, trying Docker config")
 		cfg := config.LoadDefaultConfigFile(stderr)
-		return NewDockerAuthProvider(cfg)
+		return NewDockerAuthProvider(cfg, nil)
 	}
 
 	filename := filepath.Join(xdgRuntime, XDGSubPath, PodmanConfigFileName)
@@ -48,12 +48,12 @@ func NewPodmanAuthProvider(stderr io.Writer) session.Attachable {
 			fmt.Fprintf(stderr, "WARNING: Error loading config file: %v\n", err)
 		}
 
-		return NewDockerAuthProvider(configFile)
+		return NewDockerAuthProvider(configFile, nil)
 	} else if !os.IsNotExist(err) {
 		// if file is there but we can't stat it for any reason other
 		// than it doesn't exist then stop
 		fmt.Fprintf(stderr, "WARNING: Error loading config file: %v\n", err)
-		return NewDockerAuthProvider(configFile)
+		return NewDockerAuthProvider(configFile, nil)
 	}
 
 	// No Podman config file, just use the docker one then to pick up docker credentials.
@@ -61,5 +61,5 @@ func NewPodmanAuthProvider(stderr io.Writer) session.Attachable {
 	// See here for more details: https://docs.podman.io/en/latest/markdown/podman-login.1.html
 	bklog.G(context.TODO()).Debugf("WARNING: %s did not exist, trying Docker config", filename)
 	cfg := config.LoadDefaultConfigFile(stderr)
-	return NewDockerAuthProvider(cfg)
+	return NewDockerAuthProvider(cfg, nil)
 }

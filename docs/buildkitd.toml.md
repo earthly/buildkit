@@ -18,6 +18,15 @@ root = "/var/lib/buildkit"
 # insecure-entitlements allows insecure entitlements, disabled by default.
 insecure-entitlements = [ "network.host", "security.insecure" ]
 
+[log]
+  # log formatter: json or text
+  format = "text"
+
+[dns]
+  nameservers=["1.1.1.1","8.8.8.8"]
+  options=["edns0"]
+  searchDomains=["example.com"]
+
 [grpc]
   address = [ "tcp://0.0.0.0:1234" ]
   # debugAddress is address for attaching go profiles and debuggers.
@@ -28,6 +37,10 @@ insecure-entitlements = [ "network.host", "security.insecure" ]
     cert = "/etc/buildkit/tls.crt"
     key = "/etc/buildkit/tls.key"
     ca = "/etc/buildkit/tlsca.crt"
+
+[otel]
+  # OTEL collector trace socket path
+  socketPath = "/run/buildkit/otel-grpc.sock"
 
 # config for build history API that stores information about completed build commands
 [history]
@@ -46,6 +59,9 @@ insecure-entitlements = [ "network.host", "security.insecure" ]
   # running rootless buildkit inside a container.
   noProcessSandbox = false
   gc = true
+  # gckeepstorage can be an integer number of bytes (e.g. 512000000), a string
+  # with a unit (e.g. "512MB"), or a string percentage of the total disk
+  # space (e.g. "10%")
   gckeepstorage = 9000
   # alternate OCI worker binary name(example 'crun'), by default either 
   # buildkit-runc or runc binary is used
@@ -64,7 +80,7 @@ insecure-entitlements = [ "network.host", "security.insecure" ]
 
   [[worker.oci.gcpolicy]]
     # keepBytes can be an integer number of bytes (e.g. 512000000), a string
-    # with a unit (e.g. "512MB"), or a string percentage of available disk
+    # with a unit (e.g. "512MB"), or a string percentage of the total disk
     # space (e.g. "10%")
     keepBytes = "512MB"
     # keepDuration can be an integer number of seconds (e.g. 172800), or a
@@ -81,7 +97,7 @@ insecure-entitlements = [ "network.host", "security.insecure" ]
   platforms = [ "linux/amd64", "linux/arm64" ]
   namespace = "buildkit"
   gc = true
-  # gckeepstorage sets storage limit for default gc profile, in MB.
+  # gckeepstorage sets storage limit for default gc profile, in bytes.
   gckeepstorage = 9000
   # maintain a pool of reusable CNI network namespaces to amortize the overhead
   # of allocating and releasing the namespaces
@@ -89,6 +105,11 @@ insecure-entitlements = [ "network.host", "security.insecure" ]
 
   [worker.containerd.labels]
     "foo" = "bar"
+
+  # configure the containerd runtime
+  [worker.containerd.runtime]
+    name = "io.containerd.runc.v2"
+    options = { BinaryName = "runc" }
 
   [[worker.containerd.gcpolicy]]
     keepBytes = 512000000

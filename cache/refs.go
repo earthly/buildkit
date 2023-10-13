@@ -444,7 +444,7 @@ func (cr *cacheRecord) remove(ctx context.Context, removeSnapshot bool) (rerr er
 			"id":             cr.ID(),
 			"refCount":       len(cr.refs),
 			"removeSnapshot": removeSnapshot,
-			"stack":          bklog.LazyStackTrace{},
+			"stack":          bklog.TraceLevelOnlyStack(),
 		})
 		if rerr != nil {
 			l = l.WithError(rerr)
@@ -488,7 +488,7 @@ func (sr *immutableRef) traceLogFields() logrus.Fields {
 		"refID":       fmt.Sprintf("%p", sr),
 		"newRefCount": len(sr.refs),
 		"mutable":     false,
-		"stack":       bklog.LazyStackTrace{},
+		"stack":       bklog.TraceLevelOnlyStack(),
 	}
 	if sr.equalMutable != nil {
 		m["equalMutableID"] = sr.equalMutable.ID()
@@ -628,7 +628,7 @@ func (sr *mutableRef) traceLogFields() logrus.Fields {
 		"refID":       fmt.Sprintf("%p", sr),
 		"newRefCount": len(sr.refs),
 		"mutable":     true,
-		"stack":       bklog.LazyStackTrace{},
+		"stack":       bklog.TraceLevelOnlyStack(),
 	}
 	if sr.equalMutable != nil {
 		m["equalMutableID"] = sr.equalMutable.ID()
@@ -992,6 +992,14 @@ func (sr *immutableRef) Mount(ctx context.Context, readonly bool, s session.Grou
 	return mnt, nil
 }
 
+func (sr *immutableRef) ensureLocalContentBlob(ctx context.Context, s session.Group) error {
+	if (sr.kind() == Layer || sr.kind() == BaseLayer) && !sr.getBlobOnly() {
+		return nil
+	}
+
+	return sr.unlazy(ctx, sr.descHandlers, sr.progress, s, true, true)
+}
+
 func (sr *immutableRef) Extract(ctx context.Context, s session.Group) (rerr error) {
 	if (sr.kind() == Layer || sr.kind() == BaseLayer) && !sr.getBlobOnly() {
 		return nil
@@ -1002,14 +1010,14 @@ func (sr *immutableRef) Extract(ctx context.Context, s session.Group) (rerr erro
 			if rerr = sr.prepareRemoteSnapshotsStargzMode(ctx, s); rerr != nil {
 				return
 			}
-			rerr = sr.unlazy(ctx, sr.descHandlers, sr.progress, s, true)
+			rerr = sr.unlazy(ctx, sr.descHandlers, sr.progress, s, true, false)
 		}); err != nil {
 			return err
 		}
 		return rerr
 	}
 
-	return sr.unlazy(ctx, sr.descHandlers, sr.progress, s, true)
+	return sr.unlazy(ctx, sr.descHandlers, sr.progress, s, true, false)
 }
 
 func (sr *immutableRef) withRemoteSnapshotLabelsStargzMode(ctx context.Context, s session.Group, f func()) error {
@@ -1099,8 +1107,17 @@ func (sr *immutableRef) prepareRemoteSnapshotsStargzMode(ctx context.Context, s 
 					if err == nil { // usable as remote snapshot without unlazying.
 						defer func() {
 							// Remove tmp labels appended in this func
-							for k := range tmpLabels {
-								info.Labels[k] = ""
+							if info.Labels != nil {
+								for k := range tmpLabels {
+									info.Labels[k] = ""
+								}
+							} else {
+								// We are logging here to track to try to debug when and why labels are nil.
+								// Log can be removed when not happening anymore.
+								bklog.G(ctx).
+									WithField("snapshotID", snapshotID).
+									WithField("name", info.Name).
+									Debug("snapshots exist but labels are nil")
 							}
 							if _, err := r.cm.Snapshotter.Update(ctx, info, tmpFields...); err != nil {
 								bklog.G(ctx).Warn(errors.Wrapf(err,
@@ -1140,17 +1157,25 @@ func makeTmpLabelsStargzMode(labels map[string]string, s session.Group) (fields 
 	return
 }
 
-func (sr *immutableRef) unlazy(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group, topLevel bool) error {
+func (sr *immutableRef) unlazy(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group, topLevel bool, ensureContentStore bool) error {
 	_, err := g.Do(ctx, sr.ID()+"-unlazy", func(ctx context.Context) (_ struct{}, rerr error) {
 		if _, err := sr.cm.Snapshotter.Stat(ctx, sr.getSnapshotID()); err == nil {
-			return struct{}{}, nil
+			if !ensureContentStore {
+				return struct{}{}, nil
+			}
+			if blob := sr.getBlob(); blob == "" {
+				return struct{}{}, nil
+			}
+			if _, err := sr.cm.ContentStore.Info(ctx, sr.getBlob()); err == nil {
+				return struct{}{}, nil
+			}
 		}
 
 		switch sr.kind() {
 		case Merge, Diff:
-			return struct{}{}, sr.unlazyDiffMerge(ctx, dhs, pg, s, topLevel)
+			return struct{}{}, sr.unlazyDiffMerge(ctx, dhs, pg, s, topLevel, ensureContentStore)
 		case Layer, BaseLayer:
-			return struct{}{}, sr.unlazyLayer(ctx, dhs, pg, s)
+			return struct{}{}, sr.unlazyLayer(ctx, dhs, pg, s, ensureContentStore)
 		}
 		return struct{}{}, nil
 	})
@@ -1158,7 +1183,7 @@ func (sr *immutableRef) unlazy(ctx context.Context, dhs DescHandlers, pg progres
 }
 
 // should be called within sizeG.Do call for this ref's ID
-func (sr *immutableRef) unlazyDiffMerge(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group, topLevel bool) (rerr error) {
+func (sr *immutableRef) unlazyDiffMerge(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group, topLevel bool, ensureContentStore bool) (rerr error) {
 	eg, egctx := errgroup.WithContext(ctx)
 	var diffs []snapshot.Diff
 	sr.layerWalk(func(sr *immutableRef) {
@@ -1168,13 +1193,13 @@ func (sr *immutableRef) unlazyDiffMerge(ctx context.Context, dhs DescHandlers, p
 			if sr.diffParents.lower != nil {
 				diff.Lower = sr.diffParents.lower.getSnapshotID()
 				eg.Go(func() error {
-					return sr.diffParents.lower.unlazy(egctx, dhs, pg, s, false)
+					return sr.diffParents.lower.unlazy(egctx, dhs, pg, s, false, ensureContentStore)
 				})
 			}
 			if sr.diffParents.upper != nil {
 				diff.Upper = sr.diffParents.upper.getSnapshotID()
 				eg.Go(func() error {
-					return sr.diffParents.upper.unlazy(egctx, dhs, pg, s, false)
+					return sr.diffParents.upper.unlazy(egctx, dhs, pg, s, false, ensureContentStore)
 				})
 			}
 		case Layer:
@@ -1183,7 +1208,7 @@ func (sr *immutableRef) unlazyDiffMerge(ctx context.Context, dhs DescHandlers, p
 		case BaseLayer:
 			diff.Upper = sr.getSnapshotID()
 			eg.Go(func() error {
-				return sr.unlazy(egctx, dhs, pg, s, false)
+				return sr.unlazy(egctx, dhs, pg, s, false, ensureContentStore)
 			})
 		}
 		diffs = append(diffs, diff)
@@ -1214,7 +1239,7 @@ func (sr *immutableRef) unlazyDiffMerge(ctx context.Context, dhs DescHandlers, p
 }
 
 // should be called within sizeG.Do call for this ref's ID
-func (sr *immutableRef) unlazyLayer(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group) (rerr error) {
+func (sr *immutableRef) unlazyLayer(ctx context.Context, dhs DescHandlers, pg progress.Controller, s session.Group, ensureContentStore bool) (rerr error) {
 	if !sr.getBlobOnly() {
 		return nil
 	}
@@ -1241,7 +1266,7 @@ func (sr *immutableRef) unlazyLayer(ctx context.Context, dhs DescHandlers, pg pr
 	parentID := ""
 	if sr.layerParent != nil {
 		eg.Go(func() error {
-			if err := sr.layerParent.unlazy(egctx, dhs, pg, s, false); err != nil {
+			if err := sr.layerParent.unlazy(egctx, dhs, pg, s, false, ensureContentStore); err != nil {
 				return err
 			}
 			parentID = sr.layerParent.getSnapshotID()

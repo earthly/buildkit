@@ -26,9 +26,9 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3
 	github.com/containerd/typeurl/v2 v2.1.1
 	github.com/coreos/go-systemd/v22 v22.5.0
-	github.com/docker/cli v24.0.4+incompatible
-	github.com/docker/distribution v2.8.2+incompatible
-	github.com/docker/docker v24.0.0-rc.2.0.20230723142919-afd4805278b4+incompatible // master (v25.0.0-dev)
+	github.com/distribution/reference v0.5.0
+	github.com/docker/cli v24.0.5+incompatible
+	github.com/docker/docker v24.0.0-rc.2.0.20230905130451-032797ea4bcb+incompatible // master (v25.0.0-dev)
 	github.com/docker/go-connections v0.4.0
 	github.com/docker/go-units v0.5.0
 	github.com/gofrs/flock v0.8.1
@@ -38,6 +38,7 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/hashicorp/go-cleanhttp v0.5.2
 	github.com/hashicorp/go-immutable-radix v1.3.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru v0.5.4
@@ -45,14 +46,14 @@ require (
 	github.com/klauspost/compress v1.16.3
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/moby/locker v1.0.1
-	github.com/moby/patternmatcher v0.5.0
+	github.com/moby/patternmatcher v0.6.0
 	github.com/moby/sys/mount v0.3.3
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/moby/sys/signal v0.7.0
 	github.com/morikuni/aec v1.0.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0-rc3
-	github.com/opencontainers/runc v1.1.7
+	github.com/opencontainers/runc v1.1.9
 	github.com/opencontainers/runtime-spec v1.1.0-rc.2
 	github.com/opencontainers/selinux v1.11.0
 	github.com/package-url/packageurl-go v0.1.1-0.20220428063043-89078438f170
@@ -61,7 +62,7 @@ require (
 	github.com/pkg/profile v1.5.0
 	github.com/prometheus/procfs v0.9.0
 	github.com/serialx/hashring v0.0.0-20190422032157-8b2912629002
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/spdx/tools-golang v0.5.1
 	github.com/stretchr/testify v1.8.3
 	github.com/tonistiigi/fsutil v0.0.0-20230629203738-36ef4d8c0dbb
@@ -83,15 +84,17 @@ require (
 	go.opentelemetry.io/otel/trace v1.14.0
 	go.opentelemetry.io/proto/otlp v0.19.0
 	golang.org/x/crypto v0.2.0
-	golang.org/x/net v0.8.0
+	golang.org/x/net v0.10.0
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.3.0
 	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.30.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.67
 )
+
+require github.com/docker/distribution v2.8.1+incompatible
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
@@ -141,7 +144,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3 // indirect
 	github.com/hanwen/go-fuse/v2 v2.2.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.2 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -160,7 +162,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.14.0 // indirect
 	go.opentelemetry.io/otel/metric v0.37.0 // indirect
 	golang.org/x/mod v0.9.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

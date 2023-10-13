@@ -23,13 +23,16 @@ import (
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/entitlements"
+	"github.com/moby/buildkit/util/grpcerrors"
 	utilsystem "github.com/moby/buildkit/util/system"
 	"github.com/moby/buildkit/util/testutil/echoserver"
 	"github.com/moby/buildkit/util/testutil/integration"
+	"github.com/moby/buildkit/util/testutil/workers"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh/agent"
+	"google.golang.org/grpc/codes"
 )
 
 func TestClientGatewayIntegration(t *testing.T) {
@@ -333,6 +336,7 @@ func testUnknownBuildID(t *testing.T, sb integration.Sandbox) {
 	_, err = g.Ping(ctx, &gatewayapi.PingRequest{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no such job")
+	require.Equal(t, grpcerrors.Code(err), codes.NotFound)
 }
 
 // testClientGatewayContainerCancelOnRelease is testing that all running
@@ -1839,7 +1843,7 @@ func testClientGatewayExecFileActionError(t *testing.T, sb integration.Sandbox) 
 // testClientGatewayContainerSecurityMode ensures that the correct security mode
 // is propagated to the gateway container
 func testClientGatewayContainerSecurityMode(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSecurityMode)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSecurityMode)
 	requiresLinux(t)
 
 	ctx := sb.Context()
@@ -2215,7 +2219,7 @@ func testClientGatewayContainerSignal(t *testing.T, sb integration.Sandbox) {
 }
 
 func testClientGatewayNilResult(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureMergeDiff)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureMergeDiff)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2250,7 +2254,7 @@ func testClientGatewayNilResult(t *testing.T, sb integration.Sandbox) {
 }
 
 func testClientGatewayEmptyImageExec(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()

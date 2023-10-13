@@ -21,7 +21,6 @@ import (
 	"github.com/moby/buildkit/util/appcontext"
 	"github.com/moby/buildkit/util/contentutil"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/semaphore"
 )
@@ -37,8 +36,10 @@ type Backend interface {
 	Address() string
 	DockerAddress() string
 	ContainerdAddress() string
+
 	Rootless() bool
 	Snapshotter() string
+	Supports(feature string) bool
 }
 
 type Sandbox interface {
@@ -56,8 +57,8 @@ type Sandbox interface {
 
 // BackendConfig is used to configure backends created by a worker.
 type BackendConfig struct {
-	Logs       map[string]*bytes.Buffer
-	ConfigFile string
+	Logs         map[string]*bytes.Buffer
+	DaemonConfig []ConfigUpdater
 }
 
 type Worker interface {
@@ -302,7 +303,7 @@ mirrors=["%s"]
 `, in, mc)
 }
 
-func writeConfig(updaters []ConfigUpdater) (string, error) {
+func WriteConfig(updaters []ConfigUpdater) (string, error) {
 	tmpdir, err := os.MkdirTemp("", "bktest_config")
 	if err != nil {
 		return "", err
@@ -319,7 +320,7 @@ func writeConfig(updaters []ConfigUpdater) (string, error) {
 	if err := os.WriteFile(filepath.Join(tmpdir, buildkitdConfigFile), []byte(s), 0644); err != nil {
 		return "", err
 	}
-	return tmpdir, nil
+	return filepath.Join(tmpdir, buildkitdConfigFile), nil
 }
 
 func runMirror(t *testing.T, mirroredImages map[string]string) (host string, _ func() error, err error) {
@@ -421,45 +422,4 @@ func prepareValueMatrix(tc testConf) []matrixValue {
 		m = append(m, matrixValue{})
 	}
 	return m
-}
-
-func runStargzSnapshotter(cfg *BackendConfig) (address string, cl func() error, err error) {
-	binary := "containerd-stargz-grpc"
-	if err := lookupBinary(binary); err != nil {
-		return "", nil, err
-	}
-
-	deferF := &multiCloser{}
-	cl = deferF.F()
-
-	defer func() {
-		if err != nil {
-			deferF.F()()
-			cl = nil
-		}
-	}()
-
-	tmpStargzDir, err := os.MkdirTemp("", "bktest_containerd_stargz_grpc")
-	if err != nil {
-		return "", nil, err
-	}
-	deferF.append(func() error { return os.RemoveAll(tmpStargzDir) })
-
-	address = filepath.Join(tmpStargzDir, "containerd-stargz-grpc.sock")
-	stargzRootDir := filepath.Join(tmpStargzDir, "root")
-	cmd := exec.Command(binary,
-		"--log-level", "debug",
-		"--address", address,
-		"--root", stargzRootDir)
-	snStop, err := startCmd(cmd, cfg.Logs)
-	if err != nil {
-		return "", nil, err
-	}
-	if err = waitUnix(address, 10*time.Second, cmd); err != nil {
-		snStop()
-		return "", nil, errors.Wrapf(err, "containerd-stargz-grpc did not start up: %s", formatLogs(cfg.Logs))
-	}
-	deferF.append(snStop)
-
-	return
 }

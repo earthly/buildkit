@@ -26,9 +26,14 @@ See also the [example manifests](#Kubernetes).
 
 ### Bottlerocket OS
 
-Needs to run `sysctl -w user.max_user_namespaces=N` (N=positive integer, like 63359) on the host nodes.
+Needs to set the max user namespaces to a positive integer, through the [API settings](https://github.com/bottlerocket-os/bottlerocket#kernel-settings):
 
-See [`../examples/kubernetes/sysctl-userns.privileged.yaml`](../examples/kubernetes/sysctl-userns.privileged.yaml).
+```toml
+[settings.kernel.sysctl]
+"user.max_user_namespaces" = "16384"
+```
+
+See [`../examples/eksctl/bottlerocket.yaml`](../examples/eskctl/bottlerocket.yaml) for an example to configure a Node Group in EKS.
 
 <details>
 <summary>Old distributions</summary>
@@ -114,6 +119,10 @@ Make sure to mount an `emptyDir` volume on `/home/user/.local/share/buildkit` .
 Run `sysctl -w user.max_user_namespaces=N` (N=positive integer, like 63359) on the host nodes.
 
 See [`../examples/kubernetes/sysctl-userns.privileged.yaml`](../examples/kubernetes/sysctl-userns.privileged.yaml).
+
+### Error `mount proc:/proc (via /proc/self/fd/6), flags: 0xe: operation not permitted`
+This error is known to happen when BuildKit is executed in a container without the `--oci-worker-no-sandbox` flag.
+Make sure that `--oci-worker-no-process-sandbox` is specified (See [below](#docker)).
 
 ## Containerized deployment
 

@@ -619,7 +619,7 @@ type cacheRefShare struct {
 func (r *cacheRefShare) clone(ctx context.Context) cache.MutableRef {
 	bklog.G(ctx).WithFields(map[string]any{
 		"key":   r.key,
-		"stack": bklog.LazyStackTrace{},
+		"stack": bklog.TraceLevelOnlyStack(),
 	}).Trace("cloning cache mount ref share")
 	cacheRef := &cacheRef{cacheRefShare: r}
 	if cacheRefCloneHijack != nil {
@@ -634,7 +634,7 @@ func (r *cacheRefShare) clone(ctx context.Context) cache.MutableRef {
 func (r *cacheRefShare) release(ctx context.Context) error {
 	bklog.G(ctx).WithFields(map[string]any{
 		"key":   r.key,
-		"stack": bklog.LazyStackTrace{},
+		"stack": bklog.TraceLevelOnlyStack(),
 	}).Trace("releasing cache mount ref share main")
 	if r.main != nil {
 		delete(r.main.shares, r.key)
@@ -652,7 +652,7 @@ type cacheRef struct {
 func (r *cacheRef) Release(ctx context.Context) error {
 	bklog.G(ctx).WithFields(map[string]any{
 		"key":   r.key,
-		"stack": bklog.LazyStackTrace{},
+		"stack": bklog.TraceLevelOnlyStack(),
 	}).Trace("releasing cache mount ref share")
 	if r.main != nil {
 		r.main.mu.Lock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,26 +17,31 @@ import (
 
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/content/local"
+	"github.com/containerd/containerd/content/proxy"
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/continuity/fs/fstest"
 	intoto "github.com/in-toto/in-toto-golang/in_toto"
 	provenanceCommon "github.com/in-toto/in-toto-golang/in_toto/slsa_provenance/common"
+	controlapi "github.com/moby/buildkit/api/services/control"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/frontend/dockerui"
 	gateway "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/solver/llbsolver/provenance"
+	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/contentutil"
 	"github.com/moby/buildkit/util/testutil"
 	"github.com/moby/buildkit/util/testutil/integration"
+	"github.com/moby/buildkit/util/testutil/workers"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
 func testProvenanceAttestation(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -54,11 +60,10 @@ func testProvenanceAttestation(t *testing.T, sb integration.Sandbox) {
 FROM busybox:latest
 RUN echo "ok" > /foo
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	for _, mode := range []string{"", "min", "max"} {
 		t.Run(mode, func(t *testing.T) {
@@ -226,7 +231,7 @@ RUN echo "ok" > /foo
 }
 
 func testGitProvenanceAttestation(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -246,11 +251,10 @@ FROM busybox:latest
 RUN --network=none echo "git" > /foo
 COPY myapp.Dockerfile /
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("myapp.Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	err = runShell(dir,
 		"git init",
@@ -374,7 +378,7 @@ COPY myapp.Dockerfile /
 }
 
 func testMultiPlatformProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureMultiPlatform, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureMultiPlatform, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -394,11 +398,10 @@ FROM busybox:latest
 ARG TARGETARCH
 RUN echo "ok-$TARGETARCH" > /foo
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target := registry + "/buildkit/testmultiprovenance:latest"
 
@@ -490,7 +493,7 @@ RUN echo "ok-$TARGETARCH" > /foo
 }
 
 func testClientFrontendProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureProvenance)
 	// Building with client frontend does not capture frontend provenance
 	// because frontend runs in client, not in BuildKit.
 	// This test builds Dockerfile inside a client frontend ensuring that
@@ -523,11 +526,10 @@ func testClientFrontendProvenance(t *testing.T, sb integration.Sandbox) {
 	FROM busybox:latest AS armtarget
 	RUN --network=none echo "bbox" > /foo
 	`)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
 		st := llb.HTTP("https://raw.githubusercontent.com/moby/moby/v20.10.21/README.md")
@@ -685,7 +687,7 @@ func testClientFrontendProvenance(t *testing.T, sb integration.Sandbox) {
 }
 
 func testClientLLBProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -799,7 +801,7 @@ func testClientLLBProvenance(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSecretSSHProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -818,11 +820,10 @@ func testSecretSSHProvenance(t *testing.T, sb integration.Sandbox) {
 FROM busybox:latest
 RUN --mount=type=secret,id=mysecret --mount=type=secret,id=othersecret --mount=type=ssh echo "ok" > /foo
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	target := registry + "/buildkit/testsecretprovenance:latest"
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
@@ -877,7 +878,7 @@ RUN --mount=type=secret,id=mysecret --mount=type=secret,id=othersecret --mount=t
 }
 
 func testOCILayoutProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -901,11 +902,10 @@ COPY <<EOF /foo
 foo
 EOF
 	`)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", ociDockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		LocalDirs: map[string]string{
@@ -942,11 +942,10 @@ COPY <<EOF /bar
 bar
 EOF
 `)
-	dir, err = integration.Tmpdir(
+	dir = integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		LocalDirs: map[string]string{
@@ -1012,7 +1011,7 @@ EOF
 }
 
 func testNilProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -1025,11 +1024,10 @@ func testNilProvenance(t *testing.T, sb integration.Sandbox) {
 FROM scratch
 ENV FOO=bar
 `)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		LocalDirs: map[string]string{
@@ -1050,7 +1048,7 @@ ENV FOO=bar
 
 // https://github.com/moby/buildkit/issues/3562
 func testDuplicatePlatformProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureProvenance)
 	ctx := sb.Context()
 
 	c, err := client.New(ctx, sb.Address())
@@ -1060,11 +1058,10 @@ func testDuplicatePlatformProvenance(t *testing.T, sb integration.Sandbox) {
 	f := getFrontend(t, sb)
 
 	dockerfile := []byte(`FROM alpine`)
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
 
 	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
 		FrontendAttrs: map[string]string{
@@ -1081,19 +1078,17 @@ func testDuplicatePlatformProvenance(t *testing.T, sb integration.Sandbox) {
 
 // https://github.com/moby/buildkit/issues/3928
 func testDockerIgnoreMissingProvenance(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureProvenance)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureProvenance)
 	c, err := client.New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
 
 	dockerfile := []byte(`FROM alpine`)
-	dirDockerfile, err := integration.Tmpdir(
+	dirDockerfile := integration.Tmpdir(
 		t,
 		fstest.CreateFile("Dockerfile", dockerfile, 0600),
 	)
-	require.NoError(t, err)
-	dirContext, err := integration.Tmpdir(t)
-	require.NoError(t, err)
+	dirContext := integration.Tmpdir(t)
 
 	frontend := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
 		// remove the directory to simulate the case where the context
@@ -1122,4 +1117,154 @@ func testDockerIgnoreMissingProvenance(t *testing.T, sb integration.Sandbox) {
 		},
 	}, "", frontend, nil)
 	require.NoError(t, err)
+}
+
+func testFrontendDeduplicateSources(t *testing.T, sb integration.Sandbox) {
+	ctx := sb.Context()
+
+	c, err := client.New(ctx, sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	dockerfile := []byte(`
+FROM scratch as base
+COPY foo foo2
+
+FROM linked
+COPY bar bar2
+`)
+
+	dir := integration.Tmpdir(
+		t,
+		fstest.CreateFile("Dockerfile", dockerfile, 0600),
+		fstest.CreateFile("foo", []byte("data"), 0600),
+		fstest.CreateFile("bar", []byte("data2"), 0600),
+	)
+
+	f := getFrontend(t, sb)
+
+	b := func(ctx context.Context, c gateway.Client) (*gateway.Result, error) {
+		res, err := f.SolveGateway(ctx, c, gateway.SolveRequest{
+			FrontendOpt: map[string]string{
+				"target": "base",
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		ref, err := res.SingleRef()
+		if err != nil {
+			return nil, err
+		}
+		st, err := ref.ToState()
+		if err != nil {
+			return nil, err
+		}
+
+		def, err := st.Marshal(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		dt, ok := res.Metadata["containerimage.config"]
+		if !ok {
+			return nil, errors.Errorf("no containerimage.config in metadata")
+		}
+
+		dt, err = json.Marshal(map[string][]byte{
+			"containerimage.config": dt,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		res, err = f.SolveGateway(ctx, c, gateway.SolveRequest{
+			FrontendOpt: map[string]string{
+				"context:linked":        "input:baseinput",
+				"input-metadata:linked": string(dt),
+			},
+			FrontendInputs: map[string]*pb.Definition{
+				"baseinput": def.ToPB(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
+
+	product := "buildkit_test"
+
+	destDir := t.TempDir()
+
+	ref := identity.NewID()
+
+	_, err = c.Build(ctx, client.SolveOpt{
+		LocalDirs: map[string]string{
+			dockerui.DefaultLocalNameDockerfile: dir,
+			dockerui.DefaultLocalNameContext:    dir,
+		},
+		Exports: []client.ExportEntry{
+			{
+				Type:      client.ExporterLocal,
+				OutputDir: destDir,
+			},
+		},
+		Ref: ref,
+	}, product, b, nil)
+	require.NoError(t, err)
+
+	dt, err := os.ReadFile(filepath.Join(destDir, "foo2"))
+	require.NoError(t, err)
+	require.Equal(t, "data", string(dt))
+
+	dt, err = os.ReadFile(filepath.Join(destDir, "bar2"))
+	require.NoError(t, err)
+	require.Equal(t, "data2", string(dt))
+
+	history, err := c.ControlClient().ListenBuildHistory(ctx, &controlapi.BuildHistoryRequest{
+		Ref:       ref,
+		EarlyExit: true,
+	})
+	require.NoError(t, err)
+
+	store := proxy.NewContentStore(c.ContentClient())
+
+	var provDt []byte
+	for {
+		ev, err := history.Recv()
+		if err != nil {
+			require.Equal(t, io.EOF, err)
+			break
+		}
+		require.Equal(t, ref, ev.Record.Ref)
+
+		for _, prov := range ev.Record.Result.Attestations {
+			if len(prov.Annotations) == 0 || prov.Annotations["in-toto.io/predicate-type"] != "https://slsa.dev/provenance/v0.2" {
+				t.Logf("skipping non-slsa provenance: %s", prov.MediaType)
+				continue
+			}
+
+			provDt, err = content.ReadBlob(ctx, store, ocispecs.Descriptor{
+				MediaType: prov.MediaType,
+				Digest:    prov.Digest,
+				Size:      prov.Size_,
+			})
+			require.NoError(t, err)
+		}
+	}
+
+	require.NotEqual(t, len(provDt), 0)
+
+	var pred provenance.ProvenancePredicate
+	require.NoError(t, json.Unmarshal(provDt, &pred))
+
+	sources := pred.Metadata.BuildKitMetadata.Source.Infos
+
+	require.Equal(t, 1, len(sources))
+	require.Equal(t, "Dockerfile", sources[0].Filename)
+	require.Equal(t, "Dockerfile", sources[0].Language)
+
+	require.Equal(t, dockerfile, sources[0].Data)
+	require.NotEqual(t, 0, len(sources[0].Definition))
 }

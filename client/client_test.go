@@ -37,7 +37,7 @@ import (
 	"github.com/containerd/containerd/remotes/docker"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/continuity/fs/fstest"
-	"github.com/docker/distribution/reference"
+	"github.com/distribution/reference"
 	intoto "github.com/in-toto/in-toto-golang/in_toto"
 	controlapi "github.com/moby/buildkit/api/services/control"
 	"github.com/moby/buildkit/client/llb"
@@ -59,8 +59,10 @@ import (
 	"github.com/moby/buildkit/util/testutil"
 	containerdutil "github.com/moby/buildkit/util/testutil/containerd"
 	"github.com/moby/buildkit/util/testutil/echoserver"
+	"github.com/moby/buildkit/util/testutil/helpers"
 	"github.com/moby/buildkit/util/testutil/httpserver"
 	"github.com/moby/buildkit/util/testutil/integration"
+	"github.com/moby/buildkit/util/testutil/workers"
 	digest "github.com/opencontainers/go-digest"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -72,11 +74,11 @@ import (
 )
 
 func init() {
-	if integration.IsTestDockerd() {
-		integration.InitDockerdWorker()
+	if workers.IsTestDockerd() {
+		workers.InitDockerdWorker()
 	} else {
-		integration.InitOCIWorker()
-		integration.InitContainerdWorker()
+		workers.InitOCIWorker()
+		workers.InitContainerdWorker()
 	}
 }
 
@@ -204,6 +206,7 @@ func TestIntegration(t *testing.T) {
 		testLLBMountPerformance,
 		testClientCustomGRPCOpts,
 		testMultipleRecordsWithSameLayersCacheImportExport,
+		testSnapshotWithMultipleBlobs,
 		testExportLocalNoPlatformSplit,
 		testExportLocalNoPlatformSplitOverwrite,
 	)
@@ -257,7 +260,7 @@ func newContainerd(cdAddress string) (*containerd.Client, error) {
 
 // moby/buildkit#1336
 func testCacheExportCacheKeyLoop(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheBackendLocal)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport, workers.FeatureCacheBackendLocal)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -322,7 +325,7 @@ func testBridgeNetworking(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBridgeNetworkingDNSNoRootless(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCNINetwork)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCNINetwork)
 	if os.Getenv("BUILDKIT_RUN_NETWORK_INTEGRATION_TESTS") == "" {
 		t.SkipNow()
 	}
@@ -947,7 +950,7 @@ func testNetworkMode(t *testing.T, sb integration.Sandbox) {
 }
 
 func testPushByDigest(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -992,7 +995,7 @@ func testPushByDigest(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSecurityMode(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSecurityMode)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSecurityMode)
 	command := `sh -c 'cat /proc/self/status | grep CapEff | cut -f 2 > /out'`
 	mode := llb.SecurityModeSandbox
 	var allowedEntitlements []entitlements.Entitlement
@@ -1063,7 +1066,7 @@ func testSecurityMode(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSecurityModeSysfs(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSecurityMode)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSecurityMode)
 	if sb.Rootless() {
 		t.SkipNow()
 	}
@@ -1248,15 +1251,15 @@ func testFrontendImageNaming(t *testing.T, sb integration.Sandbox) {
 
 					switch exp {
 					case ExporterOCI:
-						integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+						workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 						t.Skip("oci exporter does not support named images")
 					case ExporterDocker:
-						integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+						workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 						outW, err := os.Create(out)
 						require.NoError(t, err)
 						so.Exports[0].Output = fixedWriteCloser(outW)
 					case ExporterImage:
-						integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+						workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 						imageName = registry + "/" + imageName
 						so.Exports[0].Attrs["push"] = "true"
 					}
@@ -1459,7 +1462,7 @@ func testLocalSymlinkEscape(t *testing.T, sb integration.Sandbox) {
 [[ $(readlink /mount/sub/bar) == "../../../etc/group" ]]
 `)
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		// point to absolute path that is not part of dir
 		fstest.Symlink("/etc/passwd", "foo"),
@@ -1477,7 +1480,6 @@ func testLocalSymlinkEscape(t *testing.T, sb integration.Sandbox) {
 		fstest.CreateFile("baz", []byte{}, 0600),
 		fstest.CreateFile("test.sh", test, 0700),
 	)
-	require.NoError(t, err)
 
 	local := llb.Local("mylocal", llb.FollowPaths([]string{
 		"test.sh", "foo", "sub/bar", "bax", "sub/sub2/file",
@@ -1568,20 +1570,17 @@ func testFileOpCopyRm(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("myfile", []byte("data0"), 0600),
 		fstest.CreateDir("sub", 0700),
 		fstest.CreateFile("sub/foo", []byte("foo0"), 0600),
 		fstest.CreateFile("sub/bar", []byte("bar0"), 0600),
 	)
-	require.NoError(t, err)
-
-	dir2, err := integration.Tmpdir(
+	dir2 := integration.Tmpdir(
 		t,
 		fstest.CreateFile("file2", []byte("file2"), 0600),
 	)
-	require.NoError(t, err)
 
 	st := llb.Scratch().
 		File(
@@ -1694,14 +1693,13 @@ func testFileOpCopyIncludeExclude(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("myfile", []byte("data0"), 0600),
 		fstest.CreateDir("sub", 0700),
 		fstest.CreateFile("sub/foo", []byte("foo0"), 0600),
 		fstest.CreateFile("sub/bar", []byte("bar0"), 0600),
 	)
-	require.NoError(t, err)
 
 	st := llb.Scratch().File(
 		llb.Copy(
@@ -1833,11 +1831,10 @@ func testLocalSourceWithDiffer(t *testing.T, sb integration.Sandbox, d llb.DiffT
 	require.NoError(t, err)
 	defer c.Close()
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateFile("foo", []byte("foo"), 0600),
 	)
-	require.NoError(t, err)
 
 	tv := syscall.NsecToTimespec(time.Now().UnixNano())
 
@@ -1898,7 +1895,7 @@ func testLocalSourceWithDiffer(t *testing.T, sb integration.Sandbox, d llb.DiffT
 }
 
 func testOCILayoutSource(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureOCILayout)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureOCILayout)
 	requiresLinux(t)
 	c, err := New(context.TODO(), sb.Address())
 	require.NoError(t, err)
@@ -1995,7 +1992,7 @@ func testOCILayoutSource(t *testing.T, sb integration.Sandbox) {
 }
 
 func testOCILayoutPlatformSource(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureOCILayout)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureOCILayout)
 	requiresLinux(t)
 	c, err := New(context.TODO(), sb.Address())
 	require.NoError(t, err)
@@ -2164,7 +2161,7 @@ func testFileOpRmWildcard(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	dir, err := integration.Tmpdir(
+	dir := integration.Tmpdir(
 		t,
 		fstest.CreateDir("foo", 0700),
 		fstest.CreateDir("bar", 0700),
@@ -2172,7 +2169,6 @@ func testFileOpRmWildcard(t *testing.T, sb integration.Sandbox) {
 		fstest.CreateFile("bar/target", []byte("bar0"), 0600),
 		fstest.CreateFile("bar/remaining", []byte("bar1"), 0600),
 	)
-	require.NoError(t, err)
 
 	st := llb.Scratch().File(
 		llb.Copy(llb.Local("mylocal"), "foo", "foo").
@@ -2243,7 +2239,7 @@ func testBuildMultiMount(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBuildExportScratch(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2552,7 +2548,7 @@ func testUser(t *testing.T, sb integration.Sandbox) {
 }
 
 func testOCIExporter(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2653,7 +2649,7 @@ func testOCIExporter(t *testing.T, sb integration.Sandbox) {
 }
 
 func testOCIExporterContentStore(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2746,7 +2742,7 @@ func testOCIExporterContentStore(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSourceDateEpochLayerTimestamps(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2806,7 +2802,7 @@ func testSourceDateEpochLayerTimestamps(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSourceDateEpochClamp(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2915,7 +2911,7 @@ func testSourceDateEpochClamp(t *testing.T, sb integration.Sandbox) {
 
 // testSourceDateEpochReset tests that the SOURCE_DATE_EPOCH is reset if exporter option is set
 func testSourceDateEpochReset(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -2979,7 +2975,7 @@ func testSourceDateEpochReset(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSourceDateEpochLocalExporter(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3029,7 +3025,7 @@ func testSourceDateEpochLocalExporter(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSourceDateEpochTarExporter(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3093,7 +3089,7 @@ func testSourceDateEpochImageExporter(t *testing.T, sb integration.Sandbox) {
 	// https://github.com/containerd/containerd/commit/133ddce7cf18a1db175150e7a69470dea1bb3132
 	containerdutil.CheckVersion(t, cdAddress, ">= 1.7.0-beta.1")
 
-	integration.CheckFeatureCompat(t, sb, integration.FeatureSourceDateEpoch)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureSourceDateEpoch)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3159,7 +3155,7 @@ func testFrontendMetadataReturn(t *testing.T, sb integration.Sandbox) {
 	}
 
 	var exports []ExportEntry
-	if integration.IsTestDockerdMoby(sb) {
+	if workers.IsTestDockerdMoby(sb) {
 		exports = []ExportEntry{{
 			Type: "moby",
 			Attrs: map[string]string{
@@ -3250,7 +3246,7 @@ func testFrontendUseSolveResults(t *testing.T, sb integration.Sandbox) {
 }
 
 func testExporterTargetExists(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3371,7 +3367,7 @@ func testTarExporterSymlink(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBuildExportWithForeignLayer(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -3478,7 +3474,7 @@ func testBuildExportWithForeignLayer(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBuildExportWithUncompressed(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureImageExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureImageExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -3669,7 +3665,7 @@ func testBuildExportWithUncompressed(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBuildExportZstd(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -3765,7 +3761,7 @@ func testBuildExportZstd(t *testing.T, sb integration.Sandbox) {
 }
 
 func testPullZstdImage(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	for _, ociMediaTypes := range []bool{true, false} {
 		ociMediaTypes := ociMediaTypes
 		t.Run(t.Name()+fmt.Sprintf("/ociMediaTypes=%t", ociMediaTypes), func(t *testing.T) {
@@ -3857,7 +3853,7 @@ func testPullZstdImage(t *testing.T, sb integration.Sandbox) {
 	}
 }
 func testBuildPushAndValidate(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -4055,10 +4051,10 @@ func testBuildPushAndValidate(t *testing.T, sb integration.Sandbox) {
 }
 
 func testStargzLazyRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheBackendRegistry,
-		integration.FeatureOCIExporter,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheBackendRegistry,
+		workers.FeatureOCIExporter,
 	)
 	requiresLinux(t)
 	cdAddress := sb.ContainerdAddress()
@@ -4119,7 +4115,7 @@ func testStargzLazyRegistryCacheImportExport(t *testing.T, sb integration.Sandbo
 
 	// clear all local state out
 	ensurePruneAll(t, c, sb)
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheImport, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheImport, workers.FeatureDirectPush)
 
 	// stargz layers should be lazy even for executing something on them
 	def, err = baseDef.
@@ -4258,11 +4254,11 @@ func testStargzLazyRegistryCacheImportExport(t *testing.T, sb integration.Sandbo
 }
 
 func testStargzLazyInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendInline,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendInline,
+		workers.FeatureCacheBackendRegistry,
 	)
 	requiresLinux(t)
 	cdAddress := sb.ContainerdAddress()
@@ -4571,7 +4567,7 @@ func testStargzLazyPull(t *testing.T, sb integration.Sandbox) {
 }
 
 func testLazyImagePush(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	cdAddress := sb.ContainerdAddress()
 	if cdAddress == "" {
@@ -4710,7 +4706,7 @@ func testLazyImagePush(t *testing.T, sb integration.Sandbox) {
 }
 
 func testZstdLocalCacheExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport, integration.FeatureCacheBackendLocal)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport, workers.FeatureCacheBackendLocal)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -4769,7 +4765,7 @@ func testZstdLocalCacheExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testCacheExportIgnoreError(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheExport)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheExport)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -4861,11 +4857,11 @@ func testCacheExportIgnoreError(t *testing.T, sb integration.Sandbox) {
 			t.Run(testName, func(t *testing.T) {
 				switch n {
 				case "local-ignore-error":
-					integration.CheckFeatureCompat(t, sb, integration.FeatureCacheBackendLocal)
+					workers.CheckFeatureCompat(t, sb, workers.FeatureCacheBackendLocal)
 				case "registry-ignore-error":
-					integration.CheckFeatureCompat(t, sb, integration.FeatureCacheBackendRegistry)
+					workers.CheckFeatureCompat(t, sb, workers.FeatureCacheBackendRegistry)
 				case "s3-ignore-error":
-					integration.CheckFeatureCompat(t, sb, integration.FeatureCacheBackendS3)
+					workers.CheckFeatureCompat(t, sb, workers.FeatureCacheBackendS3)
 				}
 				_, err = c.Solve(sb.Context(), def, SolveOpt{
 					Exports:      test.Exports,
@@ -4885,10 +4881,10 @@ func testCacheExportIgnoreError(t *testing.T, sb integration.Sandbox) {
 }
 
 func testUncompressedLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendLocal,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendLocal,
 	)
 	dir := t.TempDir()
 	im := CacheOptionsEntry{
@@ -4909,10 +4905,10 @@ func testUncompressedLocalCacheImportExport(t *testing.T, sb integration.Sandbox
 }
 
 func testUncompressedRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -4938,10 +4934,10 @@ func testUncompressedRegistryCacheImportExport(t *testing.T, sb integration.Sand
 }
 
 func testZstdLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendLocal,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendLocal,
 	)
 	dir := t.TempDir()
 	im := CacheOptionsEntry{
@@ -4963,10 +4959,10 @@ func testZstdLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testImageManifestRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -4993,10 +4989,10 @@ func testImageManifestRegistryCacheImportExport(t *testing.T, sb integration.San
 }
 
 func testZstdRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -5085,10 +5081,10 @@ func testBasicCacheImportExport(t *testing.T, sb integration.Sandbox, cacheOptio
 }
 
 func testBasicRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -5106,10 +5102,10 @@ func testBasicRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testMultipleRegistryCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -5133,10 +5129,10 @@ func testMultipleRegistryCacheImportExport(t *testing.T, sb integration.Sandbox)
 }
 
 func testBasicLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendLocal,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendLocal,
 	)
 	dir := t.TempDir()
 	im := CacheOptionsEntry{
@@ -5155,19 +5151,19 @@ func testBasicLocalCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBasicS3CacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendS3,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendS3,
 	)
 
-	opts := integration.MinioOpts{
+	opts := helpers.MinioOpts{
 		Region:          "us-east-1",
 		AccessKeyID:     "minioadmin",
 		SecretAccessKey: "minioadmin",
 	}
 
-	s3Addr, s3Bucket, cleanup, err := integration.NewMinioServer(t, sb, opts)
+	s3Addr, s3Bucket, cleanup, err := helpers.NewMinioServer(t, sb, opts)
 	require.NoError(t, err)
 	defer cleanup()
 
@@ -5197,18 +5193,18 @@ func testBasicS3CacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBasicAzblobCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendAzblob,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendAzblob,
 	)
 
-	opts := integration.AzuriteOpts{
+	opts := helpers.AzuriteOpts{
 		AccountName: "azblobcacheaccount",
 		AccountKey:  base64.StdEncoding.EncodeToString([]byte("azblobcacheaccountkey")),
 	}
 
-	azAddr, cleanup, err := integration.NewAzuriteServer(t, sb, opts)
+	azAddr, cleanup, err := helpers.NewAzuriteServer(t, sb, opts)
 	require.NoError(t, err)
 	defer cleanup()
 
@@ -5234,10 +5230,10 @@ func testBasicAzblobCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureDirectPush,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheBackendInline,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureDirectPush,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheBackendInline,
 	)
 	requiresLinux(t)
 	registry, err := sb.NewRegistry()
@@ -5290,7 +5286,7 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	ensurePruneAll(t, c, sb)
-	integration.CheckFeatureCompat(t, sb, integration.FeatureCacheImport, integration.FeatureCacheBackendRegistry)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureCacheImport, workers.FeatureCacheBackendRegistry)
 
 	resp, err = c.Solve(sb.Context(), def, SolveOpt{
 		// specifying inline cache exporter is needed for reproducing containerimage.digest
@@ -5399,10 +5395,10 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testBasicGhaCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendGha,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendGha,
 	)
 	runtimeToken := os.Getenv("ACTIONS_RUNTIME_TOKEN")
 	cacheURL := os.Getenv("ACTIONS_CACHE_URL")
@@ -5442,10 +5438,10 @@ func testBasicGhaCacheImportExport(t *testing.T, sb integration.Sandbox) {
 }
 
 func testMultipleRecordsWithSameLayersCacheImportExport(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb,
-		integration.FeatureCacheExport,
-		integration.FeatureCacheImport,
-		integration.FeatureCacheBackendRegistry,
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheImport,
+		workers.FeatureCacheBackendRegistry,
 	)
 	registry, err := sb.NewRegistry()
 	if errors.Is(err, integration.ErrRequirements) {
@@ -5499,8 +5495,150 @@ func testMultipleRecordsWithSameLayersCacheImportExport(t *testing.T, sb integra
 	ensurePruneAll(t, c, sb)
 }
 
+// moby/buildkit#3809
+func testSnapshotWithMultipleBlobs(t *testing.T, sb integration.Sandbox) {
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	// build two images with same layer but different compressed blobs
+
+	registry, err := sb.NewRegistry()
+	if errors.Is(err, integration.ErrRequirements) {
+		t.Skip(err.Error())
+	}
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	st := llb.Scratch().File(llb.Copy(llb.Image("alpine"), "/", "/alpine/", llb.WithCreatedTime(now)))
+
+	def, err := st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	name1 := registry + "/multiblobtest1/image:latest"
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type: "image",
+				Attrs: map[string]string{
+					"name":              name1,
+					"push":              "true",
+					"compression-level": "0",
+				},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	ensurePruneAll(t, c, sb)
+
+	st = st.File(llb.Mkfile("test", 0600, []byte("test"))) // extra layer so we don't get a cache match based on image config rootfs only
+
+	def, err = st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	name2 := registry + "/multiblobtest2/image:latest"
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type: "image",
+				Attrs: map[string]string{
+					"name":              name2,
+					"push":              "true",
+					"compression-level": "9",
+				},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	ensurePruneAll(t, c, sb)
+
+	// first build with first image
+	destDir := t.TempDir()
+
+	out1 := filepath.Join(destDir, "out1.tar")
+	outW1, err := os.Create(out1)
+	require.NoError(t, err)
+
+	st = llb.Image(name1).File(llb.Mkfile("test", 0600, []byte("test1")))
+
+	def, err = st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type:   ExporterOCI, // make sure to export so blobs need to be loaded
+				Output: fixedWriteCloser(outW1),
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	// make sure second image does not cause any errors
+	out2 := filepath.Join(destDir, "out2.tar")
+	outW2, err := os.Create(out2)
+	require.NoError(t, err)
+
+	st = llb.Image(name2).File(llb.Mkfile("test", 0600, []byte("test2")))
+
+	def, err = st.Marshal(sb.Context())
+	require.NoError(t, err)
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		FrontendAttrs: map[string]string{
+			"attest:sbom": "",
+		},
+		Exports: []ExportEntry{
+			{
+				Type:   ExporterOCI, // make sure to export so blobs need to be loaded
+				Output: fixedWriteCloser(outW2),
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	// extra validation that we did get different layer blobs
+	dt, err := os.ReadFile(out1)
+	require.NoError(t, err)
+
+	m, err := testutil.ReadTarToMap(dt, false)
+	require.NoError(t, err)
+
+	var index ocispecs.Index
+	err = json.Unmarshal(m["index.json"].Data, &index)
+	require.NoError(t, err)
+
+	var mfst ocispecs.Manifest
+	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	require.NoError(t, err)
+
+	dt, err = os.ReadFile(out2)
+	require.NoError(t, err)
+
+	m, err = testutil.ReadTarToMap(dt, false)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(m["index.json"].Data, &index)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &index)
+	require.NoError(t, err)
+
+	var mfst2 ocispecs.Manifest
+	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst2)
+	require.NoError(t, err)
+
+	require.NotEqual(t, mfst.Layers[0].Digest, mfst2.Layers[0].Digest)
+}
+
 func testExportLocalNoPlatformSplit(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureMultiPlatform)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureMultiPlatform)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -5577,7 +5715,7 @@ func testExportLocalNoPlatformSplit(t *testing.T, sb integration.Sandbox) {
 }
 
 func testExportLocalNoPlatformSplitOverwrite(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter, integration.FeatureMultiPlatform)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter, workers.FeatureMultiPlatform)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -5923,7 +6061,7 @@ func testCopyFromEmptyImage(t *testing.T, sb integration.Sandbox) {
 
 // containerd/containerd#2119
 func testDuplicateWhiteouts(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -5993,7 +6131,7 @@ func testDuplicateWhiteouts(t *testing.T, sb integration.Sandbox) {
 
 // #276
 func testWhiteoutParentDir(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -6058,7 +6196,7 @@ func testWhiteoutParentDir(t *testing.T, sb integration.Sandbox) {
 
 // #2490
 func testMoveParentDir(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -6413,7 +6551,7 @@ func testProxyEnv(t *testing.T, sb integration.Sandbox) {
 }
 
 func testMergeOp(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureMergeDiff)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureMergeDiff)
 	requiresLinux(t)
 
 	c, err := New(sb.Context(), sb.Address())
@@ -6427,7 +6565,7 @@ func testMergeOp(t *testing.T, sb integration.Sandbox) {
 	}
 
 	var imageTarget string
-	if integration.IsTestDockerdMoby(sb) {
+	if workers.IsTestDockerdMoby(sb) {
 		// do image export but use a fake url as the image should just end up in moby's
 		// local store
 		imageTarget = "fake.invalid:33333/buildkit/testmergeop:latest"
@@ -6526,7 +6664,7 @@ func testMergeOpCacheMax(t *testing.T, sb integration.Sandbox) {
 
 func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 	t.Helper()
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureMergeDiff)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureMergeDiff)
 	requiresLinux(t)
 
 	cdAddress := sb.ContainerdAddress()
@@ -6919,7 +7057,7 @@ func requireContents(ctx context.Context, t *testing.T, c *Client, sb integratio
 
 	if imageTarget != "" {
 		var exports []ExportEntry
-		if integration.IsTestDockerdMoby(sb) {
+		if workers.IsTestDockerdMoby(sb) {
 			exports = []ExportEntry{{
 				Type: "moby",
 				Attrs: map[string]string{
@@ -7216,11 +7354,10 @@ func testParallelLocalBuilds(t *testing.T, sb integration.Sandbox) {
 		func(i int) {
 			eg.Go(func() error {
 				fn := fmt.Sprintf("test%d", i)
-				srcDir, err := integration.Tmpdir(
+				srcDir := integration.Tmpdir(
 					t,
 					fstest.CreateFile(fn, []byte("contents"), 0600),
 				)
-				require.NoError(t, err)
 
 				def, err := llb.Local("source").Marshal(sb.Context())
 				require.NoError(t, err)
@@ -7290,7 +7427,7 @@ func testRelativeMountpoint(t *testing.T, sb integration.Sandbox) {
 }
 
 func testPullWithLayerLimit(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -7405,7 +7542,7 @@ func testPullWithLayerLimit(t *testing.T, sb integration.Sandbox) {
 }
 
 func testCallInfo(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureInfo)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureInfo)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -7414,7 +7551,7 @@ func testCallInfo(t *testing.T, sb integration.Sandbox) {
 }
 
 func testValidateDigestOrigin(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -7480,7 +7617,7 @@ func testValidateDigestOrigin(t *testing.T, sb integration.Sandbox) {
 }
 
 func testExportAnnotations(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureOCIExporter)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureOCIExporter)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -7697,7 +7834,7 @@ func testExportAnnotations(t *testing.T, sb integration.Sandbox) {
 }
 
 func testExportAnnotationsMediaTypes(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -7811,7 +7948,7 @@ func testExportAnnotationsMediaTypes(t *testing.T, sb integration.Sandbox) {
 }
 
 func testExportAttestations(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -8142,7 +8279,7 @@ func testExportAttestations(t *testing.T, sb integration.Sandbox) {
 }
 
 func testAttestationDefaultSubject(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -8280,7 +8417,7 @@ func testAttestationDefaultSubject(t *testing.T, sb integration.Sandbox) {
 }
 
 func testAttestationBundle(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -8431,7 +8568,7 @@ func testAttestationBundle(t *testing.T, sb integration.Sandbox) {
 }
 
 func testSBOMScan(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureSBOM)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -8709,7 +8846,7 @@ EOF
 }
 
 func testSBOMScanSingleRef(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureSBOM)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -8875,7 +9012,7 @@ EOF
 }
 
 func testSBOMSupplements(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureDirectPush, integration.FeatureSBOM)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureDirectPush, workers.FeatureSBOM)
 	requiresLinux(t)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
@@ -9026,7 +9163,7 @@ func testSBOMSupplements(t *testing.T, sb integration.Sandbox) {
 }
 
 func testMultipleCacheExports(t *testing.T, sb integration.Sandbox) {
-	integration.CheckFeatureCompat(t, sb, integration.FeatureMultiCacheExport)
+	workers.CheckFeatureCompat(t, sb, workers.FeatureMultiCacheExport)
 	c, err := New(sb.Context(), sb.Address())
 	require.NoError(t, err)
 	defer c.Close()
@@ -9282,11 +9419,7 @@ func ensureFileContents(t *testing.T, path, expectedContents string) {
 }
 
 func makeSSHAgentSock(t *testing.T, agent agent.Agent) (p string, err error) {
-	tmpDir, err := integration.Tmpdir(t)
-	if err != nil {
-		return "", err
-	}
-
+	tmpDir := integration.Tmpdir(t)
 	sockPath := filepath.Join(tmpDir, "ssh_auth_sock")
 
 	l, err := net.Listen("unix", sockPath)

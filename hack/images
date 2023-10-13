@@ -7,9 +7,10 @@ PUSH=$3
 . $(dirname $0)/util
 set -eu -o pipefail
 
-: ${RELEASE=false}
-: ${PLATFORMS=}
-: ${TARGET=}
+: "${RELEASE=false}"
+: "${PLATFORMS=}"
+: "${TARGET=}"
+: "${BUILDKIT_DEBUG=}"
 
 versionTag=$(git describe --always --tags --match "v[0-9]*")
 
@@ -97,5 +98,5 @@ if [[ "$RELEASE" = "true" ]] && [[ "$GITHUB_ACTIONS" = "true" ]]; then
   nocacheFilterFlag="--no-cache-filter=git,buildkit-export,gobuild-base"
 fi
 
-buildxCmd build $platformFlag $targetFlag $importCacheFlags $exportCacheFlags $tagFlags $outputFlag $nocacheFilterFlag $attestFlags \
+buildxCmd build --build-arg BUILDKIT_DEBUG $platformFlag $targetFlag $importCacheFlags $exportCacheFlags $tagFlags $outputFlag $nocacheFilterFlag $attestFlags \
   $currentcontext

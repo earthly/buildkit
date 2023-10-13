@@ -18,13 +18,15 @@ insecure-entitlements = ["security.insecure"]
 [gc]
 enabled=true
 
-
 [grpc]
 address=["buildkit.sock"]
 debugAddress="debug.sock"
 gid=1234
 [grpc.tls]
 cert="mycert.pem"
+
+[otel]
+socketPath="/tmp/otel-grpc.sock"
 
 [worker.oci]
 enabled=true
@@ -40,6 +42,9 @@ foo="bar"
 namespace="non-default"
 platforms=["linux/amd64"]
 address="containerd.sock"
+[worker.containerd.runtime]
+name="exotic"
+options.foo="bar"
 [[worker.containerd.gcpolicy]]
 all=true
 filters=["foo==bar"]
@@ -83,6 +88,8 @@ searchDomains=["example.com"]
 	require.Equal(t, 1234, *cfg.GRPC.GID)
 	require.Equal(t, "mycert.pem", cfg.GRPC.TLS.Cert)
 
+	require.Equal(t, "/tmp/otel-grpc.sock", cfg.OTEL.SocketPath)
+
 	require.NotNil(t, cfg.Workers.OCI.Enabled)
 	require.Equal(t, int64(123456789), cfg.Workers.OCI.GCKeepStorage.Bytes)
 	require.Equal(t, true, *cfg.Workers.OCI.Enabled)
@@ -99,6 +106,8 @@ searchDomains=["example.com"]
 
 	require.Equal(t, 0, len(cfg.Workers.OCI.GCPolicy))
 	require.Equal(t, "non-default", cfg.Workers.Containerd.Namespace)
+	require.Equal(t, "exotic", cfg.Workers.Containerd.Runtime.Name)
+	require.Equal(t, "bar", cfg.Workers.Containerd.Runtime.Options["foo"])
 	require.Equal(t, 3, len(cfg.Workers.Containerd.GCPolicy))
 
 	require.Nil(t, cfg.Workers.Containerd.GC)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
+	"github.com/containerd/containerd/labels"
 	"github.com/moby/buildkit/cache/config"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/util/compression"
@@ -58,7 +59,6 @@ func MergeNydus(ctx context.Context, ref ImmutableRef, comp compression.Config, 
 	// Extracts nydus bootstrap from nydus format for each layer.
 	var cm *cacheManager
 	layers := []converter.Layer{}
-	blobIDs := []string{}
 	for _, ref := range refs {
 		blobDesc, err := getBlobWithCompressionWithRetry(ctx, ref, comp, s)
 		if err != nil {
@@ -72,7 +72,6 @@ func MergeNydus(ctx context.Context, ref ImmutableRef, comp compression.Config, 
 		if cm == nil {
 			cm = ref.cm
 		}
-		blobIDs = append(blobIDs, blobDesc.Digest.Hex())
 		layers = append(layers, converter.Layer{
 			Digest:   blobDesc.Digest,
 			ReaderAt: ra,
