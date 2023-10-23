@@ -4,10 +4,13 @@ import (
 	"io"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
+
+const readDeadline = 50 * time.Millisecond
 
 // NewServer creates and returns a new proxy server with a given host and client.
 func NewServer(addr string) *Server {
@@ -92,7 +95,7 @@ func (s *Server) Proxy(stream Registry_ProxyServer) error {
 	})
 
 	eg.Go(func() error {
-		_, err = io.Copy(rw, conn)
+		_, err = CopyWithDeadline(conn, rw)
 		if err != nil {
 			return errors.Wrap(err, "failed to copy from host to stream")
 		}
@@ -105,4 +108,40 @@ func (s *Server) Proxy(stream Registry_ProxyServer) error {
 	}
 
 	return nil
+}
+
+// CopyWithDeadline copies data from a net.Conn using a read deadline. The
+// process will fail with a timeout error if no data is read for the defined
+// period.
+func CopyWithDeadline(conn net.Conn, w io.Writer) (int64, error) {
+	var (
+		t   = int64(0)
+		buf = make([]byte, 32*1024)
+	)
+	for {
+		err := conn.SetReadDeadline(time.Now().Add(readDeadline))
+		if err != nil {
+			return t, err
+		}
+		n, err := conn.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) || isNetTimeout(err) {
+				break
+			}
+			return t, err
+		}
+		n, err = w.Write(buf[0:n])
+		t += int64(n)
+		if err != nil {
+			return t, err
+		}
+	}
+	return t, nil
+}
+
+func isNetTimeout(err error) bool {
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return true
+	}
+	return false
 }
