@@ -727,10 +727,16 @@ func exportDirFunc(ctx context.Context, md map[string]string, caller session.Cal
 			defer lm.Unmount()
 		}
 
-		walkOpt := &fsutil.WalkOpt{}
+		fs, err := fsutil.NewFS(src)
+		if err != nil {
+			return err
+		}
 
+		// wrap the output filesystem, applying appropriate filters
+		filterOpt := &fsutil.FilterOpt{}
+		var idMapFunc func(p string, st *fstypes.Stat) fsutil.MapResult
 		if idmap != nil {
-			walkOpt.Map = func(p string, st *fstypes.Stat) fsutil.MapResult {
+			idMapFunc = func(p string, st *fstypes.Stat) fsutil.MapResult {
 				uid, gid, err := idmap.ToContainer(idtools.Identity{
 					UID: int(st.Uid),
 					GID: int(st.Gid),
@@ -743,8 +749,23 @@ func exportDirFunc(ctx context.Context, md map[string]string, caller session.Cal
 				return fsutil.MapResultKeep
 			}
 		}
+		filterOpt.Map = func(p string, st *fstypes.Stat) fsutil.MapResult {
+			res := fsutil.MapResultKeep
+			if idMapFunc != nil {
+				// apply host uid/gid
+				res = idMapFunc(p, st)
+			}
+			//TODO if opt.Epoch != nil {
+			//TODO 	// apply used-specified epoch time
+			//TODO 	st.ModTime = opt.Epoch.UnixNano()
+			//TODO }
+			return res
+		}
+		fs, err = fsutil.NewFilterFS(fs, filterOpt)
+		if err != nil {
+			return err
+		}
 
-		fs := fsutil.NewFS(src, walkOpt)
 		progress := newProgressHandler(ctx, "copying files")
 		if err := filesync.CopyToCallerWithMeta(ctx, md, fs, caller, progress); err != nil {
 			if grpcerrors.Code(err) == codes.AlreadyExists {

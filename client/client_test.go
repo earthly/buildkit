@@ -206,6 +206,7 @@ func TestIntegration(t *testing.T) {
 		testLLBMountPerformance,
 		testClientCustomGRPCOpts,
 		testMultipleRecordsWithSameLayersCacheImportExport,
+		testRegistryEmptyCacheExport,
 		testSnapshotWithMultipleBlobs,
 		testExportLocalNoPlatformSplit,
 		testExportLocalNoPlatformSplitOverwrite,
@@ -1172,7 +1173,7 @@ func testFrontendImageNaming(t *testing.T, sb integration.Sandbox) {
 			require.True(t, ok)
 
 			var index ocispecs.Index
-			err = json.Unmarshal(m["index.json"].Data, &index)
+			err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 			require.NoError(t, err)
 			require.Equal(t, 2, index.SchemaVersion)
 			require.Equal(t, 1, len(index.Manifests))
@@ -1949,7 +1950,7 @@ func testOCILayoutSource(t *testing.T, sb integration.Sandbox) {
 	}
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(index.Manifests))
 	digest := index.Manifests[0].Digest
@@ -2080,7 +2081,7 @@ func testOCILayoutPlatformSource(t *testing.T, sb integration.Sandbox) {
 	}
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(index.Manifests))
 	digest := index.Manifests[0].Digest
@@ -2599,25 +2600,25 @@ func testOCIExporter(t *testing.T, sb integration.Sandbox) {
 		require.True(t, ok)
 
 		var index ocispecs.Index
-		err = json.Unmarshal(m["index.json"].Data, &index)
+		err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 		require.NoError(t, err)
 		require.Equal(t, 2, index.SchemaVersion)
 		require.Equal(t, 1, len(index.Manifests))
 
 		var mfst ocispecs.Manifest
-		err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+		err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 		require.NoError(t, err)
 		require.Equal(t, 2, len(mfst.Layers))
 
 		var ociimg ocispecs.Image
-		err = json.Unmarshal(m["blobs/sha256/"+mfst.Config.Digest.Hex()].Data, &ociimg)
+		err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+mfst.Config.Digest.Hex()].Data, &ociimg)
 		require.NoError(t, err)
 		require.Equal(t, "layers", ociimg.RootFS.Type)
 		require.Equal(t, 2, len(ociimg.RootFS.DiffIDs))
 
-		_, ok = m["blobs/sha256/"+mfst.Layers[0].Digest.Hex()]
+		_, ok = m[ocispecs.ImageBlobsDir+"/sha256/"+mfst.Layers[0].Digest.Hex()]
 		require.True(t, ok)
-		_, ok = m["blobs/sha256/"+mfst.Layers[1].Digest.Hex()]
+		_, ok = m[ocispecs.ImageBlobsDir+"/sha256/"+mfst.Layers[1].Digest.Hex()]
 		require.True(t, ok)
 
 		if exp != ExporterDocker {
@@ -2724,7 +2725,7 @@ func testOCIExporterContentStore(t *testing.T, sb integration.Sandbox) {
 				require.Contains(t, m, filename+"/")
 			} else {
 				require.Contains(t, m, filename)
-				if filename == "index.json" {
+				if filename == ocispecs.ImageIndexFile {
 					// this file has a timestamp in it, so we can't compare
 					return nil
 				}
@@ -3711,18 +3712,18 @@ func testBuildExportZstd(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
 	var mfst ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	lastLayer := mfst.Layers[len(mfst.Layers)-1]
 	require.Equal(t, ocispecs.MediaTypeImageLayer+"+zstd", lastLayer.MediaType)
 
 	zstdLayerDigest := lastLayer.Digest.Hex()
-	require.Equal(t, m["blobs/sha256/"+zstdLayerDigest].Data[:4], []byte{0x28, 0xb5, 0x2f, 0xfd})
+	require.Equal(t, m[ocispecs.ImageBlobsDir+"/sha256/"+zstdLayerDigest].Data[:4], []byte{0x28, 0xb5, 0x2f, 0xfd})
 
 	// repeat without oci mediatype
 	outW, err = os.Create(out)
@@ -3748,10 +3749,10 @@ func testBuildExportZstd(t *testing.T, sb integration.Sandbox) {
 	m, err = testutil.ReadTarToMap(dt, false)
 	require.NoError(t, err)
 
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	lastLayer = mfst.Layers[len(mfst.Layers)-1]
@@ -3833,11 +3834,11 @@ func testPullZstdImage(t *testing.T, sb integration.Sandbox) {
 			require.NoError(t, err)
 
 			var index ocispecs.Index
-			err = json.Unmarshal(m["index.json"].Data, &index)
+			err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 			require.NoError(t, err)
 
 			var mfst ocispecs.Manifest
-			err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+			err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 			require.NoError(t, err)
 
 			firstLayer := mfst.Layers[0]
@@ -3848,7 +3849,7 @@ func testPullZstdImage(t *testing.T, sb integration.Sandbox) {
 			}
 
 			zstdLayerDigest := firstLayer.Digest.Hex()
-			require.Equal(t, m["blobs/sha256/"+zstdLayerDigest].Data[:4], []byte{0x28, 0xb5, 0x2f, 0xfd})
+			require.Equal(t, m[ocispecs.ImageBlobsDir+"/sha256/"+zstdLayerDigest].Data[:4], []byte{0x28, 0xb5, 0x2f, 0xfd})
 		})
 	}
 }
@@ -4744,13 +4745,13 @@ func testZstdLocalCacheExport(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	dt, err := os.ReadFile(filepath.Join(destDir, "index.json"))
+	dt, err := os.ReadFile(filepath.Join(destDir, ocispecs.ImageIndexFile))
 	require.NoError(t, err)
 	err = json.Unmarshal(dt, &index)
 	require.NoError(t, err)
 
 	var layerIndex ocispecs.Index
-	dt, err = os.ReadFile(filepath.Join(destDir, "blobs/sha256/"+index.Manifests[0].Digest.Hex()))
+	dt, err = os.ReadFile(filepath.Join(destDir, ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()))
 	require.NoError(t, err)
 	err = json.Unmarshal(dt, &layerIndex)
 	require.NoError(t, err)
@@ -4759,7 +4760,7 @@ func testZstdLocalCacheExport(t *testing.T, sb integration.Sandbox) {
 	require.Equal(t, ocispecs.MediaTypeImageLayer+"+zstd", lastLayer.MediaType)
 
 	zstdLayerDigest := lastLayer.Digest.Hex()
-	dt, err = os.ReadFile(filepath.Join(destDir, "blobs/sha256/"+zstdLayerDigest))
+	dt, err = os.ReadFile(filepath.Join(destDir, ocispecs.ImageBlobsDir+"/sha256/"+zstdLayerDigest))
 	require.NoError(t, err)
 	require.Equal(t, dt[:4], []byte{0x28, 0xb5, 0x2f, 0xfd})
 }
@@ -5437,6 +5438,70 @@ func testBasicGhaCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	testBasicCacheImportExport(t, sb, []CacheOptionsEntry{im}, []CacheOptionsEntry{ex})
 }
 
+func testRegistryEmptyCacheExport(t *testing.T, sb integration.Sandbox) {
+	requiresLinux(t)
+
+	workers.CheckFeatureCompat(t, sb,
+		workers.FeatureCacheExport,
+		workers.FeatureCacheBackendRegistry,
+	)
+
+	for _, ociMediaTypes := range []bool{true, false} {
+		ociMediaTypes := ociMediaTypes
+		for _, imageManifest := range []bool{true, false} {
+			imageManifest := imageManifest
+			if imageManifest && !ociMediaTypes {
+				// invalid configuration for remote cache
+				continue
+			}
+
+			t.Run(t.Name()+fmt.Sprintf("/ociMediaTypes=%t/imageManifest=%t", ociMediaTypes, imageManifest), func(t *testing.T) {
+				c, err := New(sb.Context(), sb.Address())
+				require.NoError(t, err)
+				defer c.Close()
+
+				st := llb.Scratch()
+				def, err := st.Marshal(sb.Context())
+				require.NoError(t, err)
+
+				registry, err := sb.NewRegistry()
+				if errors.Is(err, integration.ErrRequirements) {
+					t.Skip(err.Error())
+				}
+				require.NoError(t, err)
+
+				cacheTarget := registry + "/buildkit/testregistryemptycache:latest"
+
+				cacheOptionsEntry := CacheOptionsEntry{
+					Type: "registry",
+					Attrs: map[string]string{
+						"ref":            cacheTarget,
+						"image-manifest": strconv.FormatBool(imageManifest),
+						"oci-mediatypes": strconv.FormatBool(ociMediaTypes),
+					},
+				}
+
+				_, err = c.Solve(sb.Context(), def, SolveOpt{
+					CacheExports: []CacheOptionsEntry{cacheOptionsEntry},
+				}, nil)
+				require.NoError(t, err)
+
+				ctx := namespaces.WithNamespace(sb.Context(), "buildkit")
+				cdAddress := sb.ContainerdAddress()
+				var client *containerd.Client
+				if cdAddress != "" {
+					client, err = newContainerd(cdAddress)
+					require.NoError(t, err)
+					defer client.Close()
+
+					_, err := client.Fetch(ctx, cacheTarget)
+					require.ErrorIs(t, err, ctderrdefs.ErrNotFound, "unexpected error %v", err)
+				}
+			})
+		}
+	}
+}
+
 func testMultipleRecordsWithSameLayersCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	workers.CheckFeatureCompat(t, sb,
 		workers.FeatureCacheExport,
@@ -5611,11 +5676,11 @@ func testSnapshotWithMultipleBlobs(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
 	var mfst ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	dt, err = os.ReadFile(out2)
@@ -5624,14 +5689,14 @@ func testSnapshotWithMultipleBlobs(t *testing.T, sb integration.Sandbox) {
 	m, err = testutil.ReadTarToMap(dt, false)
 	require.NoError(t, err)
 
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &index)
 	require.NoError(t, err)
 
 	var mfst2 ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst2)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst2)
 	require.NoError(t, err)
 
 	require.NotEqual(t, mfst.Layers[0].Digest, mfst2.Layers[0].Digest)
@@ -6103,16 +6168,16 @@ func testDuplicateWhiteouts(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
 	var mfst ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	lastLayer := mfst.Layers[len(mfst.Layers)-1]
 
-	layer, ok := m["blobs/sha256/"+lastLayer.Digest.Hex()]
+	layer, ok := m[ocispecs.ImageBlobsDir+"/sha256/"+lastLayer.Digest.Hex()]
 	require.True(t, ok)
 
 	m, err = testutil.ReadTarToMap(layer.Data, true)
@@ -6172,16 +6237,16 @@ func testWhiteoutParentDir(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
 	var mfst ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	lastLayer := mfst.Layers[len(mfst.Layers)-1]
 
-	layer, ok := m["blobs/sha256/"+lastLayer.Digest.Hex()]
+	layer, ok := m[ocispecs.ImageBlobsDir+"/sha256/"+lastLayer.Digest.Hex()]
 	require.True(t, ok)
 
 	m, err = testutil.ReadTarToMap(layer.Data, true)
@@ -6236,16 +6301,16 @@ func testMoveParentDir(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index)
 	require.NoError(t, err)
 
 	var mfst ocispecs.Manifest
-	err = json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst)
 	require.NoError(t, err)
 
 	lastLayer := mfst.Layers[len(mfst.Layers)-1]
 
-	layer, ok := m["blobs/sha256/"+lastLayer.Digest.Hex()]
+	layer, ok := m[ocispecs.ImageBlobsDir+"/sha256/"+lastLayer.Digest.Hex()]
 	require.True(t, ok)
 
 	m, err = testutil.ReadTarToMap(layer.Data, true)
@@ -7793,21 +7858,21 @@ func testExportAnnotations(t *testing.T, sb integration.Sandbox) {
 	require.NoError(t, err)
 
 	var layout ocispecs.Index
-	err = json.Unmarshal(m["index.json"].Data, &layout)
+	err = json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &layout)
 	require.Equal(t, "generic index descriptor", layout.Manifests[0].Annotations["gid"])
 	require.Equal(t, "generic index descriptor opt", layout.Manifests[0].Annotations["gido"])
 	require.Equal(t, created, layout.Manifests[0].Annotations[ocispecs.AnnotationCreated])
 	require.NoError(t, err)
 
 	var index ocispecs.Index
-	err = json.Unmarshal(m["blobs/sha256/"+layout.Manifests[0].Digest.Hex()].Data, &index)
+	err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+layout.Manifests[0].Digest.Hex()].Data, &index)
 	require.Equal(t, "generic index", index.Annotations["gi"])
 	require.Equal(t, "generic index opt", index.Annotations["gio"])
 	require.NoError(t, err)
 
 	for _, desc := range index.Manifests {
 		var mfst ocispecs.Manifest
-		err = json.Unmarshal(m["blobs/sha256/"+desc.Digest.Hex()].Data, &mfst)
+		err = json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+desc.Digest.Hex()].Data, &mfst)
 		require.NoError(t, err)
 
 		require.Equal(t, "generic default", mfst.Annotations["gd"])
@@ -9226,8 +9291,8 @@ func testMultipleCacheExports(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	ensureFile(t, filepath.Join(cacheOutDir, "index.json"))
-	ensureFile(t, filepath.Join(cacheOutDir2, "index.json"))
+	ensureFile(t, filepath.Join(cacheOutDir, ocispecs.ImageIndexFile))
+	ensureFile(t, filepath.Join(cacheOutDir2, ocispecs.ImageIndexFile))
 
 	dgst := res.ExporterResponse[exptypes.ExporterImageDigestKey]
 
@@ -9452,7 +9517,7 @@ func readImageTimestamps(dt []byte) (*imageTimestamps, error) {
 	}
 
 	var index ocispecs.Index
-	if err := json.Unmarshal(m["index.json"].Data, &index); err != nil {
+	if err := json.Unmarshal(m[ocispecs.ImageIndexFile].Data, &index); err != nil {
 		return nil, err
 	}
 	if len(index.Manifests) != 1 {
@@ -9463,7 +9528,7 @@ func readImageTimestamps(dt []byte) (*imageTimestamps, error) {
 	res.FromAnnotation = index.Manifests[0].Annotations[ocispecs.AnnotationCreated]
 
 	var mfst ocispecs.Manifest
-	if err := json.Unmarshal(m["blobs/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst); err != nil {
+	if err := json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+index.Manifests[0].Digest.Hex()].Data, &mfst); err != nil {
 		return nil, err
 	}
 	// don't unmarshal to image type so we get the original string value
@@ -9476,7 +9541,7 @@ func readImageTimestamps(dt []byte) (*imageTimestamps, error) {
 		Created string    `json:"created"`
 	}{}
 
-	if err := json.Unmarshal(m["blobs/sha256/"+mfst.Config.Digest.Hex()].Data, &img); err != nil {
+	if err := json.Unmarshal(m[ocispecs.ImageBlobsDir+"/sha256/"+mfst.Config.Digest.Hex()].Data, &img); err != nil {
 		return nil, err
 	}
 

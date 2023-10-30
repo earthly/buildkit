@@ -7,7 +7,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.4.1
 	github.com/Masterminds/semver/v3 v3.1.0
 	github.com/Microsoft/go-winio v0.6.1
-	github.com/Microsoft/hcsshim v0.10.0-rc.8
+	github.com/Microsoft/hcsshim v0.11.1
 	github.com/agext/levenshtein v1.2.3
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
 	github.com/aws/aws-sdk-go-v2/config v1.18.16
@@ -16,8 +16,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.6
 	github.com/aws/smithy-go v1.13.5
 	github.com/containerd/console v1.0.3
-	github.com/containerd/containerd v1.7.2
-	github.com/containerd/continuity v0.4.1
+	github.com/containerd/containerd v1.7.7
+	github.com/containerd/continuity v0.4.2
 	github.com/containerd/fuse-overlayfs-snapshotter v1.0.2
 	github.com/containerd/go-cni v1.1.9
 	github.com/containerd/go-runc v1.1.0
@@ -43,7 +43,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/in-toto/in-toto-golang v0.5.0
-	github.com/klauspost/compress v1.16.3
+	github.com/klauspost/compress v1.17.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/moby/locker v1.0.1
 	github.com/moby/patternmatcher v0.6.0
@@ -52,7 +52,7 @@ require (
 	github.com/moby/sys/signal v0.7.0
 	github.com/morikuni/aec v1.0.0
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.1.0-rc3
+	github.com/opencontainers/image-spec v1.1.0-rc5
 	github.com/opencontainers/runc v1.1.9
 	github.com/opencontainers/runtime-spec v1.1.0-rc.2
 	github.com/opencontainers/selinux v1.11.0
@@ -64,8 +64,8 @@ require (
 	github.com/serialx/hashring v0.0.0-20190422032157-8b2912629002
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spdx/tools-golang v0.5.1
-	github.com/stretchr/testify v1.8.3
-	github.com/tonistiigi/fsutil v0.0.0-20230629203738-36ef4d8c0dbb
+	github.com/stretchr/testify v1.8.4
+	github.com/tonistiigi/fsutil v0.0.0-20230825212630-f09800878302
 	github.com/tonistiigi/go-actions-cache v0.0.0-20220404170428-0bdeb6e1eac7
 	github.com/tonistiigi/go-archvariant v1.0.0
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea
@@ -83,13 +83,13 @@ require (
 	go.opentelemetry.io/otel/sdk v1.14.0
 	go.opentelemetry.io/otel/trace v1.14.0
 	go.opentelemetry.io/proto/otlp v0.19.0
-	golang.org/x/crypto v0.2.0
-	golang.org/x/net v0.10.0
+	golang.org/x/crypto v0.14.0
+	golang.org/x/net v0.17.0
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.8.0
+	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
-	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4
-	google.golang.org/grpc v1.53.0
+	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
+	google.golang.org/grpc v1.56.3
 	google.golang.org/protobuf v1.30.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.67
 )
@@ -97,8 +97,8 @@ require (
 require github.com/docker/distribution v2.8.1+incompatible
 
 require (
-	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
-	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20221215162035-5330a85ea652 // indirect
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
+	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20230306123547-8075edf89bb0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.1.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.0.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v0.6.0 // indirect
@@ -122,10 +122,10 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
+	github.com/containerd/log v0.1.0
 	github.com/containerd/ttrpc v1.2.2 // indirect
 	github.com/containernetworking/cni v1.1.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
-	github.com/cyphar/filepath-securejoin v0.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
 	github.com/docker/docker-credential-helpers v0.7.0 // indirect
@@ -162,11 +162,11 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.14.0 // indirect
 	go.opentelemetry.io/otel/metric v0.37.0 // indirect
 	golang.org/x/mod v0.9.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.67 // indirect
 )
 
-replace github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20230530182746-82567e6e2a92
+replace github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20231030221755-644b08355b65

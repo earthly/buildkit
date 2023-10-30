@@ -249,9 +249,16 @@ func sendDir(stream localhost.Localhost_GetServer, path string) error {
 		return err
 	}
 
-	fs := fsutil.NewFS(path, &fsutil.WalkOpt{
+	fs, err := fsutil.NewFS(path)
+	if err != nil {
+		return err
+	}
+	fs, err = fsutil.NewFilterFS(fs, &fsutil.FilterOpt{
 		IncludePatterns: []string{"*"},
 	})
+	if err != nil {
+		return err
+	}
 	err = fsutil.Send(stream.Context(), stream, fs, nil, nil)
 	if err != nil {
 		return errors.Wrap(err, "fsutil.Send failed")

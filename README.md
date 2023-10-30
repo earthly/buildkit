@@ -33,11 +33,11 @@ Join `#buildkit` channel on [Docker Community Slack](https://dockr.ly/comm-slack
 > **Note**
 >
 > If you are visiting this repo for the usage of BuildKit-only Dockerfile features
-> like `RUN --mount=type=(bind|cache|tmpfs|secret|ssh)`, please refer to [`frontend/dockerfile/docs/reference.md`](frontend/dockerfile/docs/reference.md)
+> like `RUN --mount=type=(bind|cache|tmpfs|secret|ssh)`, please refer to [`frontend/dockerfile/docs/reference.md`](./frontend/dockerfile/docs/reference.md)
 
 > **Note**
 >
-> [BuildKit has been integrated to `docker build` since Docker 18.09](https://docs.docker.com/develop/develop-images/build_enhancements/).
+> `docker build` [uses Buildx and BuildKit by default](https://docs.docker.com/build/architecture/) since Docker Engine 23.0.
 > You don't need to read this document unless you want to use the full-featured
 > standalone version of BuildKit.
 
@@ -81,6 +81,7 @@ Join `#buildkit` channel on [Docker Community Slack](https://dockr.ly/comm-slack
 - [Building multi-platform images](#building-multi-platform-images)
   - [Configuring `buildctl`](#configuring-buildctl)
     - [Color Output Controls](#color-output-controls)
+    - [Number of log lines (for active steps in tty mode)](#number-of-log-lines-for-active-steps-in-tty-mode)
 - [Contributing](#contributing)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -107,6 +108,7 @@ BuildKit is used by the following projects:
 -   [envd](https://github.com/tensorchord/envd/)
 -   [Depot](https://depot.dev)
 -   [Namespace](https://namespace.so)
+-   [Unikraft](https://unikraft.org)
 
 ## Quick start
 
@@ -790,6 +792,9 @@ Please refer to [`docs/multi-platform.md`](docs/multi-platform.md).
 Parsing errors will be reported but ignored. This will result in default color values being used where needed.
 
 - [The list of pre-defined colors](https://github.com/moby/buildkit/blob/master/util/progress/progressui/colors.go).
+
+#### Number of log lines (for active steps in tty mode)
+You can change how many log lines are visible for active steps in tty mode by setting `BUILDKIT_TTY_LOG_LINES` to a number (default: 6).
 
 ## Contributing
 
