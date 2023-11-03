@@ -320,7 +320,8 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 
 	eg.Go(func() error {
 		stream, err := c.ControlClient().Status(statusContext, &controlapi.StatusRequest{
-			Ref: ref,
+			Ref:         ref,
+			StatsStream: true, // earthly-specific request stats be streamed back
 		})
 		if err != nil {
 			return errors.Wrap(err, "failed to get status")

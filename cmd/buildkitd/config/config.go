@@ -116,6 +116,9 @@ type OCIConfig struct {
 
 	// earthly-specific: Hooks are things you can run during any phase of the OCI container runtime lifecycle.
 	Hooks []Hook `toml:"hook"`
+
+	// SampleFrequency is the frequency between sampling runc processes for stats
+	SampleFrequency time.Duration `toml:"sample-frequency"`
 }
 
 type ContainerdConfig struct {

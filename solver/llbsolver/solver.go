@@ -312,7 +312,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 			return nil
 		})
 		eg.Go(func() error {
-			return j.Status(ctx2, ch)
+			return j.Status(ctx2, false, ch)
 		})
 
 		if descref != nil {
@@ -879,7 +879,7 @@ func withDescHandlerCacheOpts(ctx context.Context, ref cache.ImmutableRef) conte
 	})
 }
 
-func (s *Solver) Status(ctx context.Context, id string, statusChan chan *client.SolveStatus) error {
+func (s *Solver) Status(ctx context.Context, id string, statsStream bool, statusChan chan *client.SolveStatus) error {
 	if err := s.history.Status(ctx, id, statusChan); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			close(statusChan)
@@ -894,7 +894,7 @@ func (s *Solver) Status(ctx context.Context, id string, statusChan chan *client.
 		close(statusChan)
 		return err
 	}
-	return j.Status(ctx, statusChan)
+	return j.Status(ctx, statsStream, statusChan)
 }
 
 func defaultResolver(wc *worker.Controller) ResolveWorkerFunc {

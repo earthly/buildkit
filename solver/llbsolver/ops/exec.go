@@ -386,6 +386,14 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 		}
 	}()
 
+	// earthly-specific
+	statsStream, statsFlush := logs.NewStatsStreams(ctx, os.Getenv("BUILDKIT_DEBUG_EXEC_OUTPUT") == "1")
+	defer func() {
+		if err != nil {
+			statsFlush()
+		}
+	}()
+
 	isLocal, err := e.doFromLocalHack(ctx, p.Root, p.Mounts, g, meta, stdout, stderr)
 	if err != nil {
 		return nil, err
@@ -396,10 +404,11 @@ func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Resu
 	var rec resourcestypes.Recorder
 	if !isLocal {
 		rec, execErr = e.exec.Run(ctx, "", p.Root, p.Mounts, executor.ProcessInfo{
-			Meta:   meta,
-			Stdin:  nil,
-			Stdout: stdout,
-			Stderr: stderr,
+			Meta:        meta,
+			Stdin:       nil,
+			Stdout:      stdout,
+			Stderr:      stderr,
+			StatsStream: statsStream, // earthly-specific
 		}, nil)
 	}
 

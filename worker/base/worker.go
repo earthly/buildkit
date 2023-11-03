@@ -334,6 +334,7 @@ func (w *Worker) ResolveOp(v solver.Vertex, s frontend.FrontendLLBBridge, sm *se
 		case *pb.Op_Source:
 			return ops.NewSourceOp(v, op, baseOp.Platform, w.SourceManager, w.ParallelismSem, sm, w)
 		case *pb.Op_Exec:
+			fmt.Printf("Worker.ResolveOp called\n") // this just gets called once even with two client
 			return ops.NewExecOp(v, op, baseOp.Platform, w.CacheMgr, w.ParallelismSem, sm, w.WorkerOpt.Executor, w)
 		case *pb.Op_File:
 			return ops.NewFileOp(v, op, w.CacheMgr, w.ParallelismSem, w)

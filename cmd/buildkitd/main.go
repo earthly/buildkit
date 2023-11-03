@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/containerd/containerd/pkg/seed" //nolint:staticcheck // SA1019 deprecated
 	"github.com/containerd/containerd/pkg/userns"
@@ -534,6 +535,10 @@ func setDefaultConfig(cfg *config.Config) {
 			cfg.GRPC.Address = []string{appdefaults.UserAddress()}
 		}
 		appdefaults.EnsureUserAddressDir()
+	}
+
+	if cfg.Workers.OCI.SampleFrequency == 0 {
+		cfg.Workers.OCI.SampleFrequency = time.Second
 	}
 
 	if cfg.OTEL.SocketPath == "" {

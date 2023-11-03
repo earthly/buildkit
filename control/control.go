@@ -475,7 +475,7 @@ func (c *Controller) Status(req *controlapi.StatusRequest, stream controlapi.Con
 
 	eg, ctx := errgroup.WithContext(stream.Context())
 	eg.Go(func() error {
-		return c.solver.Status(ctx, req.Ref, ch)
+		return c.solver.Status(ctx, req.Ref, req.StatsStream, ch)
 	})
 
 	eg.Go(func() error {

@@ -111,6 +111,8 @@ message SolveResponse {
 
 message StatusRequest {
 	string Ref = 1;
+
+	bool statsStream = 99; // earthly
 }
 
 message StatusResponse {

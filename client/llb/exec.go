@@ -59,7 +59,7 @@ type ExecOp struct {
 	isValidated bool
 	secrets     []SecretInfo
 	ssh         []SSHInfo
-	socket      []SocketInfo // earthly
+	socket      []SocketInfo // earthly-specific
 }
 
 func (e *ExecOp) AddMount(target string, source Output, opt ...MountOption) Output {
@@ -777,7 +777,7 @@ type ExecInfo struct {
 	ProxyEnv       *ProxyEnv
 	Secrets        []SecretInfo
 	SSH            []SSHInfo
-	Socket         []SocketInfo // earthly
+	Socket         []SocketInfo // earthly-specific
 }
 
 type MountInfo struct {

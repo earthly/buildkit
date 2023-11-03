@@ -538,6 +538,9 @@ github.com/docker/go-units
 # github.com/docker/libtrust v0.0.0-20150114040149-fa567046d9b1
 ## explicit
 github.com/docker/libtrust
+# github.com/dustin/go-humanize v1.0.0
+## explicit
+github.com/dustin/go-humanize
 # github.com/felixge/httpsnoop v1.0.3
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -797,7 +800,7 @@ github.com/spdx/tools-golang/spdx/v2/v2_3
 ## explicit; go 1.20
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
-# github.com/tonistiigi/fsutil v0.0.0-20230825212630-f09800878302 => github.com/earthly/fsutil v0.0.0-20231030221755-644b08355b65
+# github.com/tonistiigi/fsutil v0.0.0-20230825212630-f09800878302 => github.com/alexcb/fsutil v0.0.0-20231030221755-644b08355b65
 ## explicit; go 1.19
 github.com/tonistiigi/fsutil
 github.com/tonistiigi/fsutil/copy
@@ -1089,4 +1092,4 @@ kernel.org/pub/linux/libs/security/libcap/cap
 # kernel.org/pub/linux/libs/security/libcap/psx v1.2.67
 ## explicit; go 1.11
 kernel.org/pub/linux/libs/security/libcap/psx
-# github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20231030221755-644b08355b65
+# github.com/tonistiigi/fsutil => github.com/alexcb/fsutil v0.0.0-20231030221755-644b08355b65

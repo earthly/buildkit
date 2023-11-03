@@ -94,7 +94,10 @@ require (
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.67
 )
 
-require github.com/docker/distribution v2.8.1+incompatible
+require (
+	github.com/docker/distribution v2.8.1+incompatible
+	github.com/dustin/go-humanize v1.0.0
+)
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
@@ -169,4 +172,4 @@ require (
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.67 // indirect
 )
 
-replace github.com/tonistiigi/fsutil => github.com/earthly/fsutil v0.0.0-20231030221755-644b08355b65
+replace github.com/tonistiigi/fsutil => github.com/alexcb/fsutil v0.0.0-20231030221755-644b08355b65

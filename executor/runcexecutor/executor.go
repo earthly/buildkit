@@ -55,6 +55,7 @@ type Opt struct {
 	TracingSocket   string
 	Hooks           []oci.OciHook // earthly-specific
 	ResourceMonitor *resources.Monitor
+	SampleFrequency time.Duration // earthly-specific
 }
 
 var defaultCommandCandidates = []string{"buildkit-runc", "runc"}
@@ -77,6 +78,7 @@ type runcExecutor struct {
 	tracingSocket    string
 	hooks            []oci.OciHook // earthly-specific
 	resmon           *resources.Monitor
+	sampleFrequency  time.Duration // earthly-specific
 }
 
 func New(opt Opt, networkProviders map[pb.NetMode]network.Provider) (executor.Executor, error) {
@@ -144,6 +146,7 @@ func New(opt Opt, networkProviders map[pb.NetMode]network.Provider) (executor.Ex
 		tracingSocket:    opt.TracingSocket,
 		hooks:            opt.Hooks, // earthly-specific
 		resmon:           opt.ResourceMonitor,
+		sampleFrequency:  opt.SampleFrequency, // earthly-specific
 	}
 	return w, nil
 }
@@ -326,6 +329,9 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 			trace.SpanFromContext(ctx).AddEvent("Container started")
 			if started != nil {
 				close(started)
+			}
+			if process.StatsStream != nil {
+				go w.monitorContainerStats(ctx, id, w.sampleFrequency, process.StatsStream) // earthly-specific
 			}
 			if rec != nil {
 				rec.Start()
