@@ -3,6 +3,7 @@ package runcexecutor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -327,6 +328,16 @@ func (w *runcExecutor) Run(ctx context.Context, id string, root executor.Mount, 
 			if started != nil {
 				close(started)
 			}
+			go func(ctx context.Context, id string) {
+				fmt.Printf("earthly-stats; runc id: %s\n", id)
+				stats, err := w.runc.Stats(ctx, id)
+				if err != nil {
+					fmt.Printf("earthly-stats runc id %s err: %v\n", id, err)
+					return
+				}
+				fmt.Printf("earthly-stats runc id %s stats: %+v\n", id, stats)
+				time.Sleep(time.Second)
+			}(ctx, id)
 			if rec != nil {
 				rec.Start()
 			}
