@@ -208,8 +208,7 @@ func (e *edge) probeCache(d *dep, depKeys []CacheKeyWithSelector) bool {
 	}
 	found := false
 	for _, k := range keys {
-		dgst := e.edge.Vertex.Digest()
-		k.vtx = &dgst
+		k.vtx = e.edge.Vertex.Digest()
 		if _, ok := d.keyMap[k.ID]; !ok {
 			d.keyMap[k.ID] = k
 			found = true
@@ -412,8 +411,7 @@ func (e *edge) processUpdate(upt pipe.Receiver) (depChanged bool) {
 						bklog.G(context.TODO()).Error(errors.Wrap(err, "invalid query response")) // make the build fail for this error
 					} else {
 						for _, k := range keys {
-							dgst := e.edge.Vertex.Digest()
-							k.vtx = &dgst
+							k.vtx = e.edge.Vertex.Digest()
 							records, err := e.op.Cache().Records(context.Background(), k)
 							if err != nil {
 								bklog.G(context.TODO()).Errorf("error receiving cache records: %v", err)

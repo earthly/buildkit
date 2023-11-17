@@ -10,8 +10,8 @@ import (
 func NewCacheKey(dgst, vtx digest.Digest, output Index) *CacheKey {
 	return &CacheKey{
 		ID:     rootKey(dgst, output).String(),
-		digest: &dgst,
-		vtx:    &vtx,
+		digest: dgst,
+		vtx:    vtx,
 		output: output,
 		ids:    map[*cacheManager]string{},
 	}
@@ -36,9 +36,9 @@ type CacheKey struct {
 	ID   string
 	deps [][]CacheKeyWithSelector
 	// digest is the digest returned by the CacheMap implementation of this op
-	digest *digest.Digest
+	digest digest.Digest
 	// vtx is the LLB digest that this op was created for
-	vtx    *digest.Digest
+	vtx    digest.Digest
 	output Index
 	ids    map[*cacheManager]string
 
@@ -85,7 +85,7 @@ func (ck *CacheKey) Deps() [][]CacheKeyWithSelector {
 }
 
 func (ck *CacheKey) Digest() digest.Digest {
-	return *ck.digest
+	return ck.digest
 }
 func (ck *CacheKey) Output() Index {
 	return ck.output

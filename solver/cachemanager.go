@@ -379,7 +379,7 @@ func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index)
 	}
 
 	k := newKey()
-	k.digest = &dgst
+	k.digest = dgst
 	k.output = output
 	k.ID = id
 	k.ids[c] = id
