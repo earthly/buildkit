@@ -31,8 +31,7 @@ func NewCacheManager(ctx context.Context, id string, storage CacheKeyStorage, re
 		bklog.G(ctx).Errorf("failed to release unreferenced cache metadata: %+v", err)
 	}
 
-	//go cm.pruneKeyMap(ctx)
-	go cm.pruneCacheKeys(ctx)
+	go cm.pruneKeyMap(ctx)
 
 	return cm
 }
@@ -53,7 +52,7 @@ type cacheKeyWithTime struct {
 }
 
 func (c *cacheManager) pruneKeyMap(ctx context.Context) {
-	tick := time.NewTicker(30 * time.Second)
+	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	for range tick.C {
 		select {
@@ -62,27 +61,11 @@ func (c *cacheManager) pruneKeyMap(ctx context.Context) {
 		default:
 			c.keysMu.Lock()
 			for k, v := range c.keys {
-				if v.t.Before(time.Now().Add(-time.Minute)) {
+				if v.t.Before(time.Now().Add(-5 * time.Minute)) {
 					delete(c.keys, k)
 				}
 			}
 			c.keysMu.Unlock()
-		}
-	}
-}
-
-func (c *cacheManager) pruneCacheKeys(ctx context.Context) {
-	tick := time.NewTicker(30 * time.Second)
-	defer tick.Stop()
-	for range tick.C {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			err := c.ReleaseUnreferenced(ctx)
-			if err != nil {
-				fmt.Printf("failed to release unreferenced: %v\n", err)
-			}
 		}
 	}
 }
