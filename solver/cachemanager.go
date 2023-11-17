@@ -24,6 +24,7 @@ func NewCacheManager(ctx context.Context, id string, storage CacheKeyStorage, re
 		id:      id,
 		backend: storage,
 		results: results,
+		keys:    map[string]*CacheKey{},
 	}
 
 	if err := cm.ReleaseUnreferenced(ctx); err != nil {
@@ -39,6 +40,8 @@ type cacheManager struct {
 
 	backend CacheKeyStorage
 	results CacheResultStorage
+	keys    map[string]*CacheKey
+	keysMu  sync.Mutex
 }
 
 func (c *cacheManager) ReleaseUnreferenced(ctx context.Context) error {
@@ -342,11 +345,21 @@ func newKey() *CacheKey {
 }
 
 func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index) *CacheKey {
+	c.keysMu.Lock()
+	defer c.keysMu.Unlock()
+
+	if e, ok := c.keys[id]; ok {
+		return e
+	}
+
 	k := newKey()
 	k.digest = dgst
 	k.output = output
 	k.ID = id
 	k.ids[c] = id
+
+	c.keys[id] = k
+
 	return k
 }
 
