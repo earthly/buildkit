@@ -20,6 +20,7 @@ type GitIdentifier struct {
 	AuthHeaderSecret string
 	MountSSHSock     string
 	KnownSSHHosts    string
+	SSHCommand       string              // earthly-specific
 	LFSInclude       string              // earthly-specific
 	LogLevel         gitutil.GitLogLevel // earthly-specific
 }
