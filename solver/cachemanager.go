@@ -371,12 +371,12 @@ func newKey() *CacheKey {
 }
 
 func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index) *CacheKey {
-	// c.keysMu.Lock()
-	// defer c.keysMu.Unlock()
+	c.keysMu.Lock()
+	defer c.keysMu.Unlock()
 
-	// if e, ok := c.keys[id]; ok {
-	// 	return e.c
-	// }
+	if e, ok := c.keys[id]; ok {
+		return e.c
+	}
 
 	k := newKey()
 	k.digest = dgst
@@ -384,7 +384,7 @@ func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index)
 	k.ID = id
 	k.ids[c] = id
 
-	//	c.keys[id] = cacheKeyWithTime{c: k, t: time.Now()}
+	c.keys[id] = cacheKeyWithTime{c: k, t: time.Now()}
 
 	return k
 }
