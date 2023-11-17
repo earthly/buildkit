@@ -31,6 +31,7 @@ func NewCacheManager(ctx context.Context, id string, storage CacheKeyStorage, re
 		bklog.G(ctx).Errorf("failed to release unreferenced cache metadata: %+v", err)
 	}
 
+	//go cm.pruneKeyMap(ctx)
 	go cm.pruneCacheKeys(ctx)
 
 	return cm
@@ -51,7 +52,7 @@ type cacheKeyWithTime struct {
 	t time.Time
 }
 
-func (c *cacheManager) pruneCacheKeys(ctx context.Context) {
+func (c *cacheManager) pruneKeyMap(ctx context.Context) {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	for range tick.C {
@@ -66,6 +67,22 @@ func (c *cacheManager) pruneCacheKeys(ctx context.Context) {
 				}
 			}
 			c.keysMu.Unlock()
+		}
+	}
+}
+
+func (c *cacheManager) pruneCacheKeys(ctx context.Context) {
+	tick := time.NewTicker(30 * time.Second)
+	defer tick.Stop()
+	for range tick.C {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			err := c.ReleaseUnreferenced(ctx)
+			if err != nil {
+				fmt.Printf("failed to release unreferenced: %v\n", err)
+			}
 		}
 	}
 }
@@ -371,12 +388,12 @@ func newKey() *CacheKey {
 }
 
 func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index) *CacheKey {
-	c.keysMu.Lock()
-	defer c.keysMu.Unlock()
+	// c.keysMu.Lock()
+	// defer c.keysMu.Unlock()
 
-	if e, ok := c.keys[id]; ok {
-		return e.c
-	}
+	// if e, ok := c.keys[id]; ok {
+	// 	return e.c
+	// }
 
 	k := newKey()
 	k.digest = dgst
@@ -384,7 +401,7 @@ func (c *cacheManager) newKeyWithID(id string, dgst digest.Digest, output Index)
 	k.ID = id
 	k.ids[c] = id
 
-	c.keys[id] = cacheKeyWithTime{c: k, t: time.Now()}
+	//	c.keys[id] = cacheKeyWithTime{c: k, t: time.Now()}
 
 	return k
 }
