@@ -60,12 +60,12 @@ func (c *cacheManager) pruneCacheKeys(ctx context.Context) {
 			return
 		default:
 			c.keysMu.Lock()
-			defer c.keysMu.Unlock()
 			for k, v := range c.keys {
 				if v.t.Before(time.Now().Add(-time.Minute)) {
 					delete(c.keys, k)
 				}
 			}
+			c.keysMu.Unlock()
 		}
 	}
 }
