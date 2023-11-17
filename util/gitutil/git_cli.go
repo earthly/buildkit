@@ -42,6 +42,7 @@ type GitCLI struct {
 
 	sshAuthSock   string
 	sshKnownHosts string
+	sshCommand    string
 }
 
 // Option provides a variadic option for configuring the git client.
@@ -109,6 +110,13 @@ func WithSSHAuthSock(sshAuthSock string) Option {
 func WithSSHKnownHosts(sshKnownHosts string) Option {
 	return func(b *GitCLI) {
 		b.sshKnownHosts = sshKnownHosts
+	}
+}
+
+// WithSSHCommand sets the GIT_SSH_COMMAND environment variable
+func WithSSHCommand(sshCommand string) Option {
+	return func(b *GitCLI) {
+		b.sshCommand = sshCommand
 	}
 }
 
@@ -225,7 +233,7 @@ func (cli *GitCLI) Run(ctx context.Context, args ...string) (_ []byte, err error
 			"GIT_LFS_SKIP_SMUDGE=1",     // earthly-specific: dont automatically pull large files
 
 			"GIT_TERMINAL_PROMPT=0",
-			"GIT_SSH_COMMAND=" + getGitSSHCommand(cli.sshKnownHosts, logLevel),
+			"GIT_SSH_COMMAND=" + getGitSSHCommand(cli.sshKnownHosts, logLevel, cli.sshCommand),
 			//	"GIT_TRACE=1",
 			// earthly-specific: Commented out. We do not want to disable reading from gitconfig.
 			//"GIT_CONFIG_NOSYSTEM=1", // Disable reading from system gitconfig.
@@ -276,8 +284,11 @@ func (cli *GitCLI) Run(ctx context.Context, args ...string) (_ []byte, err error
 	}
 }
 
-func getGitSSHCommand(knownHosts string, logLevel GitLogLevel) string {
+func getGitSSHCommand(knownHosts string, logLevel GitLogLevel, existingSSHCommand string) string {
 	gitSSHCommand := "ssh -F /dev/null"
+	if existingSSHCommand != "" {
+		gitSSHCommand = existingSSHCommand // earthly-specific
+	}
 	if knownHosts != "" {
 		gitSSHCommand += " -o UserKnownHostsFile=" + knownHosts
 	} else {

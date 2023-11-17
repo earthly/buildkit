@@ -8,6 +8,7 @@ const AttrKnownSSHHosts = "git.knownsshhosts"
 const AttrMountSSHSock = "git.mountsshsock"
 const AttrGitLFSInclude = "git.lfsinclude" // earthly-specific
 const AttrGitLogLevel = "git.loglevel"     // earthly-specific
+const AttrGitSSHCommand = "git.sshCommand" // earthly-specific
 const AttrLocalSessionID = "local.session"
 const AttrLocalUniqueID = "local.unique"
 const AttrIncludePatterns = "local.includepattern"

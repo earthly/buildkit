@@ -101,6 +101,8 @@ func (gs *gitSource) Identifier(scheme, ref string, attrs map[string]string, pla
 				return nil, errors.Wrapf(err, "invalid git log level %s", v)
 			}
 			id.LogLevel = gitutil.GitLogLevel(l)
+		case pb.AttrGitSSHCommand: // earthly-specific
+			id.SSHCommand = v
 		}
 	}
 
@@ -699,11 +701,17 @@ func (gs *gitSourceHandler) gitCli(ctx context.Context, g session.Group, opts ..
 		cleanups = append(cleanups, unmountKnownHosts)
 	}
 
+	var sshCommand string
+	if gs.src.SSHCommand != "" {
+		sshCommand = gs.src.SSHCommand
+	}
+
 	opts = append([]gitutil.Option{
 		gitutil.WithGitDir(gitDir),
 		gitutil.WithArgs(gs.authArgs...),
 		gitutil.WithSSHAuthSock(sock),
 		gitutil.WithSSHKnownHosts(knownHosts),
+		gitutil.WithSSHCommand(sshCommand),
 	}, opts...)
 	return gitCLI(opts...), cleanup, err
 }

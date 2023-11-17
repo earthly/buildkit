@@ -284,6 +284,10 @@ func Git(url, ref string, opts ...GitOption) State {
 		attrs[pb.AttrGitLogLevel] = fmt.Sprintf("%d", gi.LogLevel)
 		addCap(&gi.Constraints, pb.CapSourceGitLogLevel)
 	}
+	if gi.SSHCommand != "" { // earthly-specific
+		attrs[pb.AttrGitSSHCommand] = gi.SSHCommand
+		addCap(&gi.Constraints, pb.CapSourceGitSSHCommand)
+	}
 	if url != "" {
 		attrs[pb.AttrFullRemoteURL] = url
 		addCap(&gi.Constraints, pb.CapSourceGitFullURL)
@@ -347,6 +351,7 @@ type GitInfo struct {
 	addAuthCap       bool
 	KnownSSHHosts    string
 	MountSSHSock     string
+	SSHCommand       string              // earthly-specific
 	LFSInclude       string              // earthly-specific
 	LogLevel         gitutil.GitLogLevel // earthly-specific
 }
@@ -395,6 +400,12 @@ func KnownSSHHosts(key string) GitOption {
 func MountSSHSock(sshID string) GitOption {
 	return gitOptionFunc(func(gi *GitInfo) {
 		gi.MountSSHSock = sshID
+	})
+}
+
+func SSHCommand(sshCommand string) GitOption {
+	return gitOptionFunc(func (gi *GitInfo) {
+		gi.SSHCommand = sshCommand
 	})
 }
 

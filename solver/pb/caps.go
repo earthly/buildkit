@@ -31,6 +31,7 @@ const (
 	CapSourceGitSubdir        apicaps.CapID = "source.git.subdir"
 	CapSourceGitLFSInclude    apicaps.CapID = "source.git.lfsinclude" // earthly-specific
 	CapSourceGitLogLevel      apicaps.CapID = "source.git.logLevel"   // earthly-specific
+	CapSourceGitSSHCommand    apicaps.CapID = "source.git.sshCommand" // earthly-specific
 
 	CapSourceHTTP         apicaps.CapID = "source.http"
 	CapSourceHTTPChecksum apicaps.CapID = "source.http.checksum"
@@ -214,6 +215,12 @@ func init() {
 		Status:  apicaps.CapStatusExperimental,
 	})
 
+	Caps.Init(apicaps.Cap{
+		ID:      CapSourceGitSSHCommand,
+		Enabled: true,
+		Status:  apicaps.CapStatusExperimental,
+	})
+	
 	Caps.Init(apicaps.Cap{
 		ID:      CapSourceHTTP,
 		Enabled: true,
