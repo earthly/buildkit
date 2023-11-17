@@ -52,6 +52,9 @@ func (w *runcExecutor) monitorContainerStats(ctx context.Context, id string, sam
 
 		stats, err := w.runc.Stats(ctx, id)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			if numFailuresAllowed > 0 {
 				// allow the initial calls to runc.Stats to fail, for cases where the program didn't start within the initial
 				// sampleFrequency; this should only occur under heavy workloads
