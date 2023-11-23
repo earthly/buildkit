@@ -15,6 +15,7 @@ import (
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/remotes/docker"
+	remoteserrors "github.com/containerd/containerd/remotes/errors"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/moby/buildkit/cache"
@@ -555,6 +556,11 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 				e.opt.ImageWriter.ContentStore(), img.mfstDesc.Digest,
 				imgName, img.insecurePush, e.opt.RegistryHosts, false, annotations)
 			if err != nil {
+				var errStatus remoteserrors.ErrUnexpectedStatus
+				if errors.As(err, &errStatus) {
+					// TODO body might be json, e.g. `{"errors":[{"code":"DENIED","message":"The repository with name 'my-cool-image' in registry with id '123456789' already has the maximum allowed number of images which is '10000'"}]}`, we should attempt to parse this
+					return nil, nil, fmt.Errorf("failed to push %s: %w body=%s", imgName, errStatus, errStatus.Body)
+				}
 				return nil, nil, err
 			}
 		}
