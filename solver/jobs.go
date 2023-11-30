@@ -300,8 +300,10 @@ func (jl *Solver) getEdge(e Edge) *edge {
 	jl.mu.RLock()
 	defer jl.mu.RUnlock()
 
-	st, ok := jl.actives[e.Vertex.Digest()]
+	dgst := e.Vertex.Digest()
+	st, ok := jl.actives[dgst]
 	if !ok {
+		dgstTrackerInst.add(dgst, "get-edge-not-found")
 		return nil
 	}
 	return st.getEdge(e.Index)
@@ -356,11 +358,13 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		// existing active vertex, as otherwise the original vertex will use an
 		// incorrect digest and can incorrectly delete it while it is still in use.
 		v = st.vtx
+		dgstTrackerInst.add(dgst, "loadUnlocked-found-dgstWithoutCache")
 	}
 
 	if !ok {
 		st, ok = jl.actives[dgst]
 
+		dgstTrackerInst.add(dgst, "loadUnlocked-not-found-dgstWithoutCache")
 		// !ignorecache merges with ignorecache but ignorecache doesn't merge with !ignorecache
 		if ok && !st.vtx.Options().IgnoreCache && v.Options().IgnoreCache {
 			dgst = dgstWithoutCache
@@ -394,6 +398,9 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 			origDigest:   origVtx.Digest(),
 		}
 		jl.actives[dgst] = st
+		dgstTrackerInst.add(dgst, "loadUnlocked-add")
+	} else {
+		dgstTrackerInst.add(dgst, "loadUnlocked-exists")
 	}
 
 	st.mu.Lock()
@@ -409,6 +416,8 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		if _, ok := st.jobs[j]; !ok {
 			st.jobs[j] = struct{}{}
 		}
+	} else {
+		dgstTrackerInst.add(dgst, "loadUnlocked-nil-job")
 	}
 	st.mu.Unlock()
 
@@ -515,6 +524,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 		}
 		st.Release()
 		delete(jl.actives, k)
+		dgstTrackerInst.add(k, "delete")
 	}
 }
 

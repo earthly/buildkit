@@ -365,6 +365,8 @@ type pipeFactory struct {
 func (pf *pipeFactory) NewInputRequest(ee Edge, req *edgeRequest) pipe.Receiver {
 	target := pf.s.ef.getEdge(ee)
 	if target == nil {
+		dgst := ee.Vertex.Digest()
+		bklog.G(context.TODO()).Errorf("failed to get edge dgst=%s name=%s desiredState=%s; actives history: %s", dgst, ee.Vertex.Name(), req.desiredState, dgstTrackerInst.String()) // earthly-specific
 		return pf.NewFuncRequest(func(_ context.Context) (interface{}, error) {
 			return nil, errors.Errorf("failed to get edge: inconsistent graph state")
 		})
