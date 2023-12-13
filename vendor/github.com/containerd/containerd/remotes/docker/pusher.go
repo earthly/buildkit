@@ -274,8 +274,6 @@ func (p dockerPusher) push(ctx context.Context, desc ocispec.Descriptor, ref str
 		},
 	})
 
-	// TODO: Support chunked upload
-
 	pushw := newPushWriter(p.dockerBase, ref, desc.Digest, p.tracker, isManifest)
 
 	req.body = func() (io.ReadCloser, error) {
@@ -283,7 +281,6 @@ func (p dockerPusher) push(ctx context.Context, desc ocispec.Descriptor, ref str
 		pushw.setPipe(pw)
 		return io.NopCloser(pr), nil
 	}
-	req.size = desc.Size
 
 	go func() {
 		resp, err := req.doWithRetries(ctx, nil)
