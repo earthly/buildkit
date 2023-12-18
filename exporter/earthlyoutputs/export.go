@@ -403,6 +403,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 	defer done(context.TODO())
 
 	resp := make(map[string]string)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
 	for imgName, img := range images {
 		desc, err := e.opt.ImageWriter.Commit(ctx, img.expSrc, sessionID, &img.opts)
 		if err != nil {
@@ -415,7 +416,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src *exporter.Source
 		if desc.Annotations == nil {
 			desc.Annotations = map[string]string{}
 		}
-		desc.Annotations[ocispecs.AnnotationCreated] = time.Now().UTC().Format(time.RFC3339)
+		desc.Annotations[ocispecs.AnnotationCreated] = timestamp
 
 		if v, ok := desc.Annotations[exptypes.ExporterConfigDigestKey]; ok {
 			cfgDgstKey := fmt.Sprintf("%s|%s", imgName, exptypes.ExporterConfigDigestKey)
