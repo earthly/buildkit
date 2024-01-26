@@ -1457,6 +1457,46 @@ path, using `--link` is always recommended. The performance of `--link` is
 equivalent or better than the default behavior and, it creates much better
 conditions for cache reuse.
 
+
+## COPY --parents
+
+> **Note**
+>
+> Available in [`docker/dockerfile-upstream:master-labs`](#syntax).
+> Will be included in `docker/dockerfile:1.6-labs`.
+
+```dockerfile
+COPY [--parents[=<boolean>]] <src>... <dest>
+```
+
+The `--parents` flag preserves parent directories for `src` entries. This flag defaults to `false`.
+
+```dockerfile
+# syntax=docker/dockerfile-upstream:master-labs
+FROM scratch
+
+COPY ./x/a.txt ./y/a.txt /no_parents/
+COPY --parents ./x/a.txt ./y/a.txt /parents/
+
+# /no_parents/a.txt
+# /parents/x/a.txt
+# /parents/y/a.txt
+```
+
+This behavior is analogous to the [Linux `cp` utility's](https://www.man7.org/linux/man-pages/man1/cp.1.html)
+`--parents` flag.
+
+Note that, without the `--parents` flag specified, any filename collision will
+fail the Linux `cp` operation with an explicit error message
+(`cp: will not overwrite just-created './x/a.txt' with './y/a.txt'`), where the
+Buildkit will silently overwrite the target file at the destination.
+
+While it is possible to preserve the directory structure for `COPY`
+instructions consisting of only one `src` entry, usually it is more beneficial
+to keep the layer count in the resulting image as low as possible. Therefore,
+with the `--parents` flag, the Buildkit is capable of packing multiple
+`COPY` instructions together, keeping the directory structure intact.
+
 ## ENTRYPOINT
 
 ENTRYPOINT has two forms:
@@ -2115,7 +2155,7 @@ RUN echo "I'm building for $TARGETPLATFORM"
 | `BUILDKIT_CACHE_MOUNT_NS`             | String | Set optional cache ID namespace.                                                                                                                                                                               |
 | `BUILDKIT_CONTEXT_KEEP_GIT_DIR`       | Bool   | Trigger git context to keep the `.git` directory.                                                                                                                                                              |
 | `BUILDKIT_INLINE_CACHE`[^2]           | Bool   | Inline cache metadata to image config or not.                                                                                                                                                                  |
-| `BUILDKIT_MULTI_PLATFORM`             | Bool   | Opt into determnistic output regardless of multi-platform output or not.                                                                                                                                       |
+| `BUILDKIT_MULTI_PLATFORM`             | Bool   | Opt into deterministic output regardless of multi-platform output or not.                                                                                                                                      |
 | `BUILDKIT_SANDBOX_HOSTNAME`           | String | Set the hostname (default `buildkitsandbox`)                                                                                                                                                                   |
 | `BUILDKIT_SYNTAX`                     | String | Set frontend image                                                                                                                                                                                             |
 | `SOURCE_DATE_EPOCH`                   | Int    | Set the UNIX timestamp for created image and layers. More info from [reproducible builds](https://reproducible-builds.org/docs/source-date-epoch/). Supported since Dockerfile 1.5, BuildKit 0.11              |
