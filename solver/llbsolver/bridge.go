@@ -3,6 +3,7 @@ package llbsolver
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -312,6 +313,12 @@ func (rp *resultProxy) loadResult(ctx context.Context) (solver.CachedResultWithP
 }
 
 func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err error) {
+	fmt.Printf("resultProxy.Result called from %s\n", debug.Stack())
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("resultProxy.Result got a context cancel\n") // this is getting cancelled
+	}(ctx)
+
 	defer func() {
 		err = rp.wrapError(err)
 	}()
@@ -326,7 +333,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 			return rp.v, rp.err
 		}
 		rp.mu.Unlock()
-		v, err := rp.loadResult(ctx)
+		v, err := rp.loadResult(ctx) // this makes it's way into the scheduler (which exeperences a cancel)
 		if err != nil {
 			select {
 			case <-ctx.Done():
