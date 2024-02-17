@@ -2,6 +2,7 @@ package solver
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -177,10 +178,11 @@ func (e *edge) isComplete() bool {
 func (e *edge) finishIncoming(req pipe.Sender) {
 	err := e.err
 	if req.Request().Canceled && err == nil {
+		fmt.Printf("request dgst=%s was canceled, setting err=context.Canceled\n", e.edge.Vertex.Digest())
 		err = context.Canceled
 	}
 	if debugScheduler {
-		bklog.G(context.TODO()).Debugf("finishIncoming %s %v %#v desired=%s", e.edge.Vertex.Name(), err, e.edgeState, req.Request().Payload.(*edgeRequest).desiredState)
+		bklog.G(context.TODO()).Debugf("finishIncoming %s %s %v %#v desired=%s", e.edge.Vertex.Name(), e.edge.Vertex.Digest(), err, e.edgeState, req.Request().Payload.(*edgeRequest).desiredState)
 	}
 	req.Finalize(&e.edgeState, err)
 }
@@ -727,6 +729,7 @@ func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receive
 	}
 
 	if allIncomingCanComplete && e.hasActiveOutgoing {
+		fmt.Printf("Cancel called due to allIncomingCanComplete\n")
 		// cancel all current requests
 		for _, p := range allPipes {
 			p.Cancel()
@@ -819,6 +822,7 @@ func (e *edge) createInputRequests(desiredState edgeStatusType, f *pipeFactory, 
 			addNew := true
 			if dep.req != nil && !dep.req.Status().Completed {
 				if dep.req.Request().(*edgeRequest).desiredState != desiredStateDep {
+					fmt.Printf("Cancel called due to here2 %s != %s\n", dep.req.Request().(*edgeRequest).desiredState.String(), desiredStateDep.String())
 					dep.req.Cancel()
 				} else {
 					addNew = false
@@ -863,6 +867,7 @@ func (e *edge) execIfPossible(f *pipeFactory) bool {
 		e.execReq = f.NewFuncRequest(e.loadCache)
 		e.execCacheLoad = true
 		for req := range e.depRequests {
+			fmt.Printf("Cancel called due to here3\n")
 			req.Cancel()
 		}
 		return true

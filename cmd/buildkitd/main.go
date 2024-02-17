@@ -716,6 +716,7 @@ func unaryInterceptor(globalCtx context.Context, tp trace.TracerProvider) grpc.U
 		resp, err = withTrace(ctx, req, info, handler)
 		if err != nil {
 			bklog.G(ctx).Errorf("%s returned error: %v", info.FullMethod, err)
+			// this prints errors from the client (which references converter.go which is confusing)
 			//if logrus.GetLevel() >= logrus.DebugLevel {
 			//	fmt.Fprintf(os.Stderr, "%+v", stack.Formatter(grpcerrors.FromGRPC(err)))
 			//}
