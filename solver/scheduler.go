@@ -363,6 +363,9 @@ type pipeFactory struct {
 }
 
 func (pf *pipeFactory) NewInputRequest(ee Edge, req *edgeRequest) pipe.Receiver {
+	if req == nil {
+		panic("NewInputRequest called with nil req")
+	}
 	target := pf.s.ef.getEdge(ee)
 	if target == nil {
 		dgst := ee.Vertex.Digest()
