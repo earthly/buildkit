@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -694,6 +693,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			if ref == nil {
 				id = ""
 			} else {
+				fmt.Printf("lbf.Solve1 storing %s -> %s\n", id, ref.ID())
 				lbf.refs[id] = ref
 			}
 			ids[k] = id
@@ -718,6 +718,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			id = ""
 		} else {
 			def = ref.Definition()
+			fmt.Printf("lbf.Solve2 storing %s -> %s\n", id, ref.ID())
 			lbf.refs[id] = ref
 		}
 		defaultID = id
@@ -741,6 +742,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 				if att.Ref != nil {
 					id := identity.NewID()
 					def := att.Ref.Definition()
+					fmt.Printf("lbf.Solve3 storing %s -> %s\n", id, att.Ref.ID())
 					lbf.refs[id] = att.Ref
 					pbAtt.Ref = &pb.Ref{Id: id, Def: def}
 				}
@@ -786,7 +788,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 }
 
 func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path string) (cache.ImmutableRef, error) {
-	fmt.Printf("getImmutableRef called on %s %s by %s\n", id, path, debug.Stack())
+	fmt.Printf("getImmutableRef called on %s %s\n", id, path)
 	go func() {
 		<-ctx.Done()
 		fmt.Printf("getImmutableRef called on %s %s context is done\n", id, path)
@@ -1540,6 +1542,7 @@ func (lbf *llbBridgeForwarder) cloneRef(id string) (solver.ResultProxy, error) {
 	}
 
 	s1, s2 := solver.SplitResultProxy(r)
+	fmt.Printf("lbf.cloneRef storing %s -> %s\n", id, s1.ID())
 	lbf.refs[id] = s1
 	return s2, nil
 }
