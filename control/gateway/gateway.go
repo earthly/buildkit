@@ -175,6 +175,8 @@ func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequ
 		fmt.Printf("ReadDir %s %s got an error: %v; gonna stall here\n", req.Ref, req.DirPath, err)
 		stall.Store(true)
 		time.Sleep(time.Hour)
+	} else {
+		fmt.Printf("GatewayForwarder.ReadDir %s %s is ok\n", req.Ref, req.DirPath)
 	}
 	return res, err
 }
