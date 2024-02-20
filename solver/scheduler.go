@@ -231,6 +231,7 @@ func (s *scheduler) signal(e *edge) {
 
 // build evaluates edge into a result
 func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) {
+	fmt.Printf("scheduler got edge to build index=%d dgst=%s numinputs=%d\n", edge.Index, edge.Vertex.Digest(), len(edge.Vertex.Inputs()))
 	s.mu.Lock()
 	e := s.ef.getEdge(edge)
 	if e == nil {
@@ -310,6 +311,7 @@ func (s *scheduler) newRequestWithFunc(e *edge, f func(context.Context) (interfa
 
 // mergeTo merges the state from one edge to another. source edge is discarded.
 func (s *scheduler) mergeTo(target, src *edge) bool {
+	fmt.Printf("merging %p into %p\n", src, target)
 	if !target.edge.Vertex.Options().IgnoreCache && src.edge.Vertex.Options().IgnoreCache {
 		return false
 	}
