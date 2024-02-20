@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/moby/buildkit/client/buildid"
@@ -13,6 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
+
+var stall atomic.Bool
 
 type GatewayForwarder struct {
 	mu         sync.RWMutex
@@ -93,6 +96,9 @@ func (gwf *GatewayForwarder) ResolveImageConfig(ctx context.Context, req *gwapi.
 		return nil, errors.Wrap(err, "forwarding ResolveImageConfig")
 	}
 
+	if stall.Load() {
+		time.Sleep(time.Hour)
+	}
 	return fwd.ResolveImageConfig(ctx, req)
 }
 
@@ -101,7 +107,9 @@ func (gwf *GatewayForwarder) Solve(ctx context.Context, req *gwapi.SolveRequest)
 	if err != nil {
 		return nil, errors.Wrap(err, "forwarding Solve")
 	}
-
+	if stall.Load() {
+		time.Sleep(time.Hour)
+	}
 	return fwd.Solve(ctx, req)
 }
 
@@ -109,6 +117,9 @@ func (gwf *GatewayForwarder) ReadFile(ctx context.Context, req *gwapi.ReadFileRe
 	fwd, err := gwf.lookupForwarder(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "forwarding ReadFile")
+	}
+	if stall.Load() {
+		time.Sleep(time.Hour)
 	}
 	return fwd.ReadFile(ctx, req)
 }
@@ -156,9 +167,13 @@ func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequ
 	if err != nil {
 		return nil, errors.Wrap(err, "forwarding ReadDir")
 	}
+	if stall.Load() {
+		time.Sleep(time.Hour)
+	}
 	res, err := fwd.ReadDir(ctx, req)
 	if err != nil {
 		fmt.Printf("ReadDir got an error: %v; gonna stall here\n", err)
+		stall.Store(true)
 		time.Sleep(time.Hour)
 	}
 	return res, err
@@ -169,6 +184,9 @@ func (gwf *GatewayForwarder) Export(ctx context.Context, req *gwapi.ExportReques
 	if err != nil {
 		return nil, errors.Wrap(err, "forwarding Export")
 	}
+	if stall.Load() {
+		time.Sleep(time.Hour)
+	}
 	return fwd.Export(ctx, req)
 }
 
@@ -176,6 +194,9 @@ func (gwf *GatewayForwarder) StatFile(ctx context.Context, req *gwapi.StatFileRe
 	fwd, err := gwf.lookupForwarder(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "forwarding StatFile")
+	}
+	if stall.Load() {
+		time.Sleep(time.Hour)
 	}
 	return fwd.StatFile(ctx, req)
 }
