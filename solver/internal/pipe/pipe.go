@@ -176,7 +176,8 @@ type receiver struct {
 
 func (pr *receiver) Request() interface{} {
 	if pr.req.Payload == nil {
-		panic("payload is nil")
+		// a receiver can have a nil payload when pipe.NewWithFunction(f) is called
+		panic("payload is nil when calling Request()")
 	}
 	return pr.req.Payload
 }

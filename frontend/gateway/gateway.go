@@ -795,6 +795,11 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 		return nil, errors.Wrap(os.ErrNotExist, path)
 	}
 
+	fmt.Printf("getImmutableRef called on %s %s\n", id, path)
+	go func() {
+		<-ctx.Done()
+		fmt.Printf("getImmutableRef called on %s %s context is done\n", id, path)
+	}()
 	r, err := ref.Result(ctx)
 	if err != nil {
 		return nil, lbf.wrapSolveError(err)
@@ -809,6 +814,12 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 }
 
 func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileRequest) (*pb.ReadFileResponse, error) {
+	fmt.Printf("llbBridgeForwarder.ReadFile called on %s %s\n", req.Ref, req.FilePath)
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("llbBridgeForwarder.ReadFile called on %s %s context done\n", req.Ref, req.FilePath)
+	}(ctx)
+
 	ctx = tracing.ContextWithSpanFromContext(ctx, lbf.callCtx)
 
 	ref, err := lbf.getImmutableRef(ctx, req.Ref, req.FilePath)
