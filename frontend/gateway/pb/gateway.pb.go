@@ -2990,6 +2990,12 @@ func (c *lLBBridgeClient) ReadFile(ctx context.Context, in *ReadFileRequest, opt
 }
 
 func (c *lLBBridgeClient) ReadDir(ctx context.Context, in *ReadDirRequest, opts ...grpc.CallOption) (*ReadDirResponse, error) {
+	fmt.Printf("lLBBridgeClient.ReadDir %+v\n", in)
+	go func() {
+		<-ctx.Done()
+		fmt.Printf("lLBBridgeClient.ReadDir %+v context done\n", in)
+	}()
+
 	out := new(ReadDirResponse)
 	err := c.cc.Invoke(ctx, "/moby.buildkit.v1.frontend.LLBBridge/ReadDir", in, out, opts...)
 	if err != nil {

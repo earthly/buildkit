@@ -1126,6 +1126,7 @@ func (r *reference) ReadFile(ctx context.Context, req client.ReadRequest) ([]byt
 }
 
 func (r *reference) ReadDir(ctx context.Context, req client.ReadDirRequest) ([]*fstypes.Stat, error) {
+	fmt.Printf("calling reference.ReadDir %s %s\n", r.id, req.Path)
 	if err := r.c.caps.Supports(pb.CapReadDir); err != nil {
 		return nil, err
 	}
