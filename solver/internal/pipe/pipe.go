@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -95,6 +96,7 @@ func New(req Request) *Pipe {
 		req:         req,
 		sendChannel: roundTripCh,
 	}
+	fmt.Printf("new receiver with req %+v\n", req)
 	pr := &receiver{
 		req:         req,
 		recvChannel: roundTripCh,
