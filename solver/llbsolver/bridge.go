@@ -313,10 +313,10 @@ func (rp *resultProxy) loadResult(ctx context.Context) (solver.CachedResultWithP
 }
 
 func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err error) {
-	fmt.Printf("resultProxy.Result called from %s\n", debug.Stack())
+	fmt.Printf("resultProxy.Result id=%s called from %s\n", rp.id, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("resultProxy.Result got a context cancel\n") // this is getting cancelled
+		fmt.Printf("resultProxy.Result got a context cancel id=%s\n", rp.id) // this is getting cancelled
 	}(ctx)
 
 	defer func() {
@@ -334,6 +334,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 		}
 		rp.mu.Unlock()
 		v, err := rp.loadResult(ctx) // this makes it's way into the scheduler (which exeperences a cancel)
+		fmt.Printf("resultProxy.Result %s loadResult returned %+v err=%v\n", rp.id, v, err)
 		if err != nil {
 			select {
 			case <-ctx.Done():
