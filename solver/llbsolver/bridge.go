@@ -154,6 +154,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load LLB")
 	}
+	fmt.Printf("Load(def=%p) -> digest=%s edge_index=%d\n", def, edge.Vertex.Digest(), edge.Index)
 
 	if len(dpc.ids) > 0 {
 		ids := make([]string, 0, len(dpc.ids))
@@ -316,7 +317,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 	fmt.Printf("resultProxy.Result id=%s called from %s\n", rp.id, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("resultProxy.Result got a context cancel id=%s\n", rp.id) // this is getting cancelled
+		fmt.Printf("resultProxy.Result id=%s got a context cancel\n", rp.id) // this is getting cancelled
 	}(ctx)
 
 	defer func() {
@@ -333,6 +334,9 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 			return rp.v, rp.err
 		}
 		rp.mu.Unlock()
+
+		fmt.Printf("resultProxy.Result id=%s calling loadResult on def=%p\n", rp.id, rp.req.Definition)
+
 		v, err := rp.loadResult(ctx) // this makes it's way into the scheduler (which exeperences a cancel)
 		fmt.Printf("resultProxy.Result %s loadResult returned %+v err=%v\n", rp.id, v, err)
 		if err != nil {
