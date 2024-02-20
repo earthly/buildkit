@@ -161,7 +161,7 @@ func (gwf *GatewayForwarder) Inputs(ctx context.Context, req *gwapi.InputsReques
 func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequest) (*gwapi.ReadDirResponse, error) {
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("GatewayForwarder.ReadDir got a context cancel\n")
+		fmt.Printf("GatewayForwarder.ReadDir %s %s got a context cancel\n", req.Ref, req.DirPath)
 	}(ctx)
 	fwd, err := gwf.lookupForwarder(ctx)
 	if err != nil {
@@ -172,7 +172,7 @@ func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequ
 	}
 	res, err := fwd.ReadDir(ctx, req)
 	if err != nil {
-		fmt.Printf("ReadDir got an error: %v; gonna stall here\n", err)
+		fmt.Printf("ReadDir %s %s got an error: %v; gonna stall here\n", req.Ref, req.DirPath, err)
 		stall.Store(true)
 		time.Sleep(time.Hour)
 	}
