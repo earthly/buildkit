@@ -856,6 +856,11 @@ func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileReq
 }
 
 func (lbf *llbBridgeForwarder) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*pb.ReadDirResponse, error) {
+	fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s\n", req.Ref, req.DirPath)
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s context done\n", req.Ref, req.DirPath)
+	}(ctx)
 	ctx = tracing.ContextWithSpanFromContext(ctx, lbf.callCtx)
 
 	ref, err := lbf.getImmutableRef(ctx, req.Ref, req.DirPath)
