@@ -173,6 +173,9 @@ type receiver struct {
 }
 
 func (pr *receiver) Request() interface{} {
+	if pr.req.Payload == nil {
+		panic("payload is nil")
+	}
 	return pr.req.Payload
 }
 
