@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -785,7 +786,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 }
 
 func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path string) (cache.ImmutableRef, error) {
-	fmt.Printf("getImmutableRef called on %s %s\n", id, path)
+	fmt.Printf("getImmutableRef called on %s %s by %s\n", id, path, debug.Stack())
 	go func() {
 		<-ctx.Done()
 		fmt.Printf("getImmutableRef called on %s %s context is done\n", id, path)
