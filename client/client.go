@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -230,7 +231,7 @@ func (c *Client) Wait(ctx context.Context) error {
 }
 
 func (c *Client) Close() error {
-	fmt.Printf("Client.Close called\n")
+	fmt.Printf("Client.Close called called from %s\n", debug.Stack())
 	return c.conn.Close()
 }
 
