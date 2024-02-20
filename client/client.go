@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -229,6 +230,7 @@ func (c *Client) Wait(ctx context.Context) error {
 }
 
 func (c *Client) Close() error {
+	fmt.Printf("Client.Close called\n")
 	return c.conn.Close()
 }
 
