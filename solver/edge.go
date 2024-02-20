@@ -3,6 +3,7 @@ package solver
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ func newEdge(ed Edge, op activeOp, index *edgeIndex) *edge {
 		cacheRecordsLoaded: map[string]struct{}{},
 		index:              index,
 	}
+	fmt.Printf("newEdge %p for dgst=%s\n", e, ed.Vertex.Digest())
 	return e
 }
 
@@ -178,7 +180,7 @@ func (e *edge) isComplete() bool {
 func (e *edge) finishIncoming(req pipe.Sender) {
 	err := e.err
 	if req.Request().Canceled && err == nil {
-		fmt.Printf("request dgst=%s was canceled, setting err=context.Canceled\n", e.edge.Vertex.Digest())
+		fmt.Printf("request dgst=%s was canceled, setting err=context.Canceled, called by %s\n", e.edge.Vertex.Digest(), debug.Stack())
 		err = context.Canceled
 	}
 	if debugScheduler {
