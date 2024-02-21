@@ -806,6 +806,7 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 
 	r, err := ref.Result(ctx)
 	if err != nil {
+		fmt.Printf("getImmutableRef called on %s %s calls ref.Result got err=%v\n", id, path, err)
 		return nil, lbf.wrapSolveError(err)
 	}
 
@@ -867,6 +868,7 @@ func (lbf *llbBridgeForwarder) ReadDir(ctx context.Context, req *pb.ReadDirReque
 
 	ref, err := lbf.getImmutableRef(ctx, req.Ref, req.DirPath)
 	if err != nil {
+		fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s getImmutableRef err=%v\n", req.Ref, req.DirPath, err)
 		return nil, err
 	}
 
