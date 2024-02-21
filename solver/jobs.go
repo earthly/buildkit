@@ -314,6 +314,7 @@ func (jl *Solver) getEdge(e Edge) *edge {
 	st, ok := jl.actives[dgst]
 	if !ok {
 		dgstTrackerInst.add(dgst, "get-edge-not-found")
+		panic(fmt.Sprintf("failed to get edge for dgst %s\n", dgst))
 		return nil
 	}
 	return st.getEdge(e.Index)
