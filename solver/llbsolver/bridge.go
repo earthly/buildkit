@@ -171,6 +171,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	res, err := b.builder.Build(ctx, edge)
 	fmt.Printf("b.builder.Build def=%p digest=%s returned err=%v\n", def, edge.Vertex.Digest(), err)
 	if err != nil {
+		panic("got an error when calling build")
 		return nil, err
 	}
 	return res, nil
