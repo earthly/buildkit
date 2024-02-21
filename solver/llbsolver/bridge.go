@@ -155,6 +155,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 		return nil, errors.Wrap(err, "failed to load LLB")
 	}
 	fmt.Printf("Load(def=%p) -> digest=%s edge_index=%d\n", def, edge.Vertex.Digest(), edge.Index)
+	dumpEdge("", edge)
 
 	if len(dpc.ids) > 0 {
 		ids := make([]string, 0, len(dpc.ids))
@@ -174,6 +175,13 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 		return nil, err
 	}
 	return res, nil
+}
+
+func dumpEdge(prefix string, edge solver.Edge) {
+	fmt.Printf("%sdgst=%s %s\n", prefix, edge.Vertex.Digest(), edge.Vertex.Name())
+	for _, e := range edge.Vertex.Inputs() {
+		dumpEdge(prefix+"  ", e)
+	}
 }
 
 // getExporter is earthly specific code which extracts the configured exporter
