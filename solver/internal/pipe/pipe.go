@@ -70,6 +70,7 @@ type Status struct {
 
 func NewWithFunction(f func(context.Context) (interface{}, error)) (*Pipe, func()) {
 	p := New(Request{})
+	fmt.Printf("%p) created via NewWithFunction\n", p.Receiver)
 
 	ctx, cancel := context.WithCancel(context.TODO())
 
@@ -96,12 +97,12 @@ func New(req Request) *Pipe {
 		req:         req,
 		sendChannel: roundTripCh,
 	}
-	fmt.Printf("new receiver with req %+v\n", req)
 	pr := &receiver{
 		req:         req,
 		recvChannel: roundTripCh,
 		sendChannel: cancelCh,
 	}
+	fmt.Printf("%p) new receiver with req %+v\n", pr, req)
 
 	p := &Pipe{
 		Sender:   pw,
@@ -177,7 +178,7 @@ type receiver struct {
 func (pr *receiver) Request() interface{} {
 	if pr.req.Payload == nil {
 		// a receiver can have a nil payload when pipe.NewWithFunction(f) is called
-		panic("payload is nil when calling Request()")
+		panic(fmt.Sprintf("%p: payload is nil when calling Request()", pr))
 	}
 	return pr.req.Payload
 }
