@@ -154,7 +154,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load LLB")
 	}
-	fmt.Printf("Load(def=%p) -> digest=%s\n%s", def, edge.Vertex.Digest(), graphToString("", edge))
+	fmt.Printf("\nLoad(def=%p) -> digest=%s\n%s\n", def, edge.Vertex.Digest(), graphToString("", edge))
 
 	if len(dpc.ids) > 0 {
 		ids := make([]string, 0, len(dpc.ids))

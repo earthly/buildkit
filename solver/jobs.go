@@ -308,6 +308,7 @@ func (jl *Solver) getState(e Edge) *state {
 }
 
 func (jl *Solver) getEdge(e Edge) *edge {
+	fmt.Printf("%p jl.getEdge\n", jl)
 	jl.mu.RLock()
 	defer jl.mu.RUnlock()
 
@@ -315,9 +316,10 @@ func (jl *Solver) getEdge(e Edge) *edge {
 	st, ok := jl.actives[dgst]
 	if !ok {
 		dgstTrackerInst.add(dgst, "get-edge-not-found")
-		panic(fmt.Sprintf("failed to get edge for dgst %s\n", dgst))
+		panic(fmt.Sprintf("failed to get edge for dgst %s\n", dgst)) // this causes the inconsistent graph state error
 		return nil
 	}
+	fmt.Printf("%p jl.getEdge dgst=%s got state=%p\n", jl, dgst, st)
 	return st.getEdge(e.Index)
 }
 
@@ -359,6 +361,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 	}
 
 	dgst := v.Digest()
+	fmt.Printf("loadUnlocked %s\n", dgst)
 
 	dgstWithoutCache := digest.FromBytes([]byte(fmt.Sprintf("%s-ignorecache", dgst)))
 
