@@ -138,6 +138,7 @@ func (s *state) builder() *subBuilder {
 }
 
 func (s *state) getEdge(index Index) *edge {
+	fmt.Printf("getEdge %d\n", index)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.edges[index]; ok {
