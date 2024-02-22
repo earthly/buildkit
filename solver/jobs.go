@@ -448,9 +448,12 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		if _, ok := st.jobs[j]; !ok {
 			fmt.Printf("adding job %p to state %p\n", j, st)
 			st.jobs[j] = struct{}{}
+		} else {
+			fmt.Printf("adding job %p to state %p already done\n", j, st)
 		}
 	} else {
 		dgstTrackerInst.add(dgst, "loadUnlocked-nil-job")
+		fmt.Printf("job is nil cant add to state %p\n", st)
 	}
 	st.mu.Unlock()
 
@@ -467,7 +470,11 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 			for id, c := range parentState.cache {
 				st.cache[id] = c
 			}
+		} else {
+			fmt.Printf("adding parent dgst %s to state %p already done\n", parent.Digest(), st)
 		}
+	} else {
+		fmt.Printf("state %p has no parent\n", st)
 	}
 
 	jl.connectProgressFromState(st, st)
