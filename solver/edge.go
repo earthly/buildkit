@@ -70,6 +70,7 @@ type edge struct {
 	owner         *edge
 	keysDidChange bool
 	index         *edgeIndex
+	released      bool // earthly debug
 
 	secondaryExporters []expDep
 
@@ -123,6 +124,13 @@ type edgeRequest struct {
 // takeOwnership increases the number of times release needs to be
 // called to release the edge. Called on merging edges.
 func (e *edge) takeOwnership(old *edge) {
+	if e.released {
+		panic("edge already released")
+	}
+	if old.released {
+		panic("old edge already released")
+	}
+	fmt.Printf("takeOwnership e=%p old=%e %d+%d+1\n", e, old, e.releaserCount, old.releaserCount)
 	e.releaserCount += old.releaserCount + 1
 	old.owner = e
 	old.releaseResult()
@@ -130,10 +138,12 @@ func (e *edge) takeOwnership(old *edge) {
 
 // release releases the edge resources
 func (e *edge) release() {
+	fmt.Printf("release %p count=%d\n", e.releaserCount)
 	if e.releaserCount > 0 {
 		e.releaserCount--
 		return
 	}
+	e.released = true
 	e.releaseResult()
 }
 
