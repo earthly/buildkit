@@ -411,6 +411,7 @@ func (s *Solver) recordBuildHistory(ctx context.Context, id string, req frontend
 }
 
 func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req frontend.SolveRequest, exp ExporterRequest, ent []entitlements.Entitlement, post []Processor, internal bool, srcPol *spb.Policy) (_ *client.SolveResponse, err error) {
+	fmt.Printf("llbsolver.Solve called with id=%s, sessionID=%s\n", id, sessionID)
 	j, err := s.solver.NewJob(id)
 	if err != nil {
 		return nil, err
