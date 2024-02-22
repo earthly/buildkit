@@ -205,6 +205,7 @@ func (s *state) combinedCacheManager() CacheManager {
 }
 
 func (s *state) Release() {
+	fmt.Printf("state %p Release()\n", s)
 	for _, e := range s.edges {
 		for e.owner != nil {
 			e = e.owner
