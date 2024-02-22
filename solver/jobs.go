@@ -176,6 +176,7 @@ func (s *state) setEdge(index Index, targetEdge *edge, targetState *state) {
 	} else {
 		e = newEdge(Edge{Index: index, Vertex: s.vtx}, s.op, s.index)
 		s.edges[index] = e
+		fmt.Printf("setEdge %d storing new edge %p\n", index, e)
 	}
 	targetEdge.takeOwnership(e)
 

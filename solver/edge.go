@@ -130,7 +130,7 @@ func (e *edge) takeOwnership(old *edge) {
 	if old.released {
 		panic("old edge already released")
 	}
-	fmt.Printf("takeOwnership e=%p old=%e %d+%d+1\n", e, old, e.releaserCount, old.releaserCount)
+	fmt.Printf("takeOwnership e=%p old=%p count=%d+%d+1 dgst=%s\n", e, old, e.releaserCount, old.releaserCount, e.edge.Vertex.Digest())
 	e.releaserCount += old.releaserCount + 1
 	old.owner = e
 	old.releaseResult()
@@ -138,7 +138,7 @@ func (e *edge) takeOwnership(old *edge) {
 
 // release releases the edge resources
 func (e *edge) release() {
-	fmt.Printf("release %p count=%d\n", e.releaserCount)
+	fmt.Printf("release %p count=%d dgst=%s\n", e, e.releaserCount, e.edge.Vertex.Digest())
 	if e.releaserCount > 0 {
 		e.releaserCount--
 		return
