@@ -321,7 +321,7 @@ func (jl *Solver) getEdge(e Edge) *edge {
 	st, ok := jl.actives[dgst]
 	if !ok {
 		dgstTrackerInst.add(dgst, "get-edge-not-found")
-		panic(fmt.Sprintf("failed to get edge for dgst %s\n", dgst)) // this causes the inconsistent graph state error
+		panic(fmt.Sprintf("failed to get edge for dgst %s (inconsitent graph state error)\n", dgst)) // this causes the inconsistent graph state error
 		return nil
 	}
 	gotEdge := st.getEdge(e.Index)
@@ -380,14 +380,19 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		// incorrect digest and can incorrectly delete it while it is still in use.
 		v = st.vtx
 		dgstTrackerInst.add(dgst, "loadUnlocked-found-dgstWithoutCache")
+		fmt.Printf("actives -ignorecache found %s -> %p\n", dgst, st)
 	}
 
 	if !ok {
 		st, ok = jl.actives[dgst]
+		if ok {
+			fmt.Printf("actives -ignorecache not found, but %s found -> %p\n", dgst, st)
+		}
 
 		dgstTrackerInst.add(dgst, "loadUnlocked-not-found-dgstWithoutCache")
 		// !ignorecache merges with ignorecache but ignorecache doesn't merge with !ignorecache
 		if ok && !st.vtx.Options().IgnoreCache && v.Options().IgnoreCache {
+			fmt.Printf("ignorecache is set, changing %s to %s\n", dgst, dgstWithoutCache)
 			dgst = dgstWithoutCache
 		}
 
@@ -398,6 +403,9 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		}
 
 		st, ok = jl.actives[dgst]
+		if ok {
+			fmt.Printf("actives %s found -> %p\n", dgst, st)
+		}
 	}
 
 	if !ok {
@@ -419,6 +427,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 			origDigest:   origVtx.Digest(),
 		}
 		jl.actives[dgst] = st
+		fmt.Printf("actives add %s -> %p\n", dgst, st)
 		dgstTrackerInst.add(dgst, "loadUnlocked-add")
 	} else {
 		dgstTrackerInst.add(dgst, "loadUnlocked-exists")
