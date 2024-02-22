@@ -254,7 +254,6 @@ func loadLLB(ctx context.Context, def *pb.Definition, polEngine SourcePolicyEval
 			return solver.Edge{}, errors.Wrap(err, "failed to parse llb proto op")
 		}
 		dgst := digest.FromBytes(dt)
-		fmt.Printf("Load -> %s -> %+v\n", dgst, op)
 		if polEngine != nil {
 			mutated, err := polEngine.Evaluate(ctx, &op)
 			if err != nil {
