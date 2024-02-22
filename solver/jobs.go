@@ -138,22 +138,27 @@ func (s *state) builder() *subBuilder {
 }
 
 func (s *state) getEdge(index Index) *edge {
-	fmt.Printf("getEdge %d\n", index)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	fmt.Printf("getEdge %d dgst=%s\n", index, s.vtx.Digest())
 	if e, ok := s.edges[index]; ok {
+		fmt.Printf("getEdge %d e=%p\n", index, e)
 		for e.owner != nil {
+			fmt.Printf("getEdge %d loop e=%p\n", index, e)
 			e = e.owner
 		}
+		fmt.Printf("getEdge %d from cache e=%p\n", index, e)
 		return e
 	}
 
 	if s.op == nil {
+		fmt.Printf("getEdge %d newSharedOp\n", index)
 		s.op = newSharedOp(s.opts.ResolveOpFunc, s.opts.DefaultCache, s)
 	}
 
 	e := newEdge(Edge{Index: index, Vertex: s.vtx}, s.op, s.index)
 	s.edges[index] = e
+	fmt.Printf("getEdge %d returning new edge %p\n", index, e)
 	return e
 }
 
