@@ -353,6 +353,7 @@ func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
 
 func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex) (Vertex, error) {
 	if v, ok := cache[v]; ok {
+		fmt.Printf("loadUnlocked %s cache hit\n", v.Digest())
 		return v, nil
 	}
 	origVtx := v
@@ -553,6 +554,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 			jl.deleteIfUnreferenced(chKey, chState)
 		}
 		st.Release()
+		fmt.Printf("delete actives %s\n", k)
 		delete(jl.actives, k)
 		dgstTrackerInst.add(k, "delete")
 	}
