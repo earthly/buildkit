@@ -319,8 +319,9 @@ func (jl *Solver) getEdge(e Edge) *edge {
 		panic(fmt.Sprintf("failed to get edge for dgst %s\n", dgst)) // this causes the inconsistent graph state error
 		return nil
 	}
-	fmt.Printf("%p jl.getEdge dgst=%s got state=%p\n", jl, dgst, st)
-	return st.getEdge(e.Index)
+	gotEdge := st.getEdge(e.Index)
+	fmt.Printf("%p jl.getEdge dgst=%s got state=%p returning edge %p\n", jl, dgst, st, gotEdge)
+	return gotEdge
 }
 
 func (jl *Solver) subBuild(ctx context.Context, e Edge, parent Vertex) (CachedResult, error) {
