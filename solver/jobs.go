@@ -446,6 +446,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 
 	if j != nil {
 		if _, ok := st.jobs[j]; !ok {
+			fmt.Printf("adding job %p to state %p\n", j, st)
 			st.jobs[j] = struct{}{}
 		}
 	} else {
@@ -455,6 +456,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 
 	if parent != nil {
 		if _, ok := st.parents[parent.Digest()]; !ok {
+			fmt.Printf("adding parent dgst %s to state %p\n", parent.Digest(), st)
 			st.parents[parent.Digest()] = struct{}{}
 			parentState, ok := jl.actives[parent.Digest()]
 			if !ok {
@@ -485,6 +487,7 @@ func (jl *Solver) connectProgressFromState(target, src *state) {
 		}
 	}
 	for p := range src.parents {
+		fmt.Printf("jl.connectProgressFromState target=%p dgst=%s from src %p\n", target, p, src)
 		jl.connectProgressFromState(target, jl.actives[p])
 	}
 }
@@ -635,6 +638,7 @@ func (j *Job) Discard() error {
 	for k, st := range j.list.actives {
 		st.mu.Lock()
 		if _, ok := st.jobs[j]; ok {
+			fmt.Printf("removing job %p from state %p\n", j, st)
 			delete(st.jobs, j)
 			j.list.deleteIfUnreferenced(k, st)
 		}
