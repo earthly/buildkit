@@ -223,6 +223,7 @@ type subBuilder struct {
 }
 
 func (sb *subBuilder) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
+	fmt.Printf("call to subBuilder.Build\n")
 	res, err := sb.solver.subBuild(ctx, e, sb.vtx)
 	if err != nil {
 		return nil, err
@@ -572,6 +573,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
+	fmt.Printf("call to job.Build\n")
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		j.span = span
 	}
