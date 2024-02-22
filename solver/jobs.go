@@ -640,6 +640,7 @@ func (j *Job) CloseProgress() {
 }
 
 func (j *Job) Discard() error {
+	fmt.Printf("call to job.Discard j=%p\n", j)
 	j.list.mu.Lock()
 	defer j.list.mu.Unlock()
 
