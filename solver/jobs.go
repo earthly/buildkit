@@ -255,6 +255,7 @@ func (sb *subBuilder) EachValue(ctx context.Context, key string, fn func(interfa
 }
 
 type Job struct {
+	mu            sync.Mutex // earthly-specific
 	list          *Solver
 	pr            *progress.MultiReader
 	pw            progress.Writer
@@ -574,6 +575,8 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	startttttt := time.Now()
 	fmt.Printf("call to job.Build j=%p edge=%p at %v\n", j, e, startttttt.String())
 	defer fmt.Printf("call to job.Build j=%p edge=%p at %v done\n", j, e, startttttt.String())
