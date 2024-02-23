@@ -176,10 +176,10 @@ type receiver struct {
 }
 
 func (pr *receiver) Request() interface{} {
-	if pr.req.Payload == nil {
-		// a receiver can have a nil payload when pipe.NewWithFunction(f) is called
-		panic(fmt.Sprintf("%p: payload is nil when calling Request()", pr))
-	}
+	//if pr.req.Payload == nil {
+	//	// a receiver can have a nil payload when pipe.NewWithFunction(f) is called
+	//	panic(fmt.Sprintf("%p: payload is nil when calling Request()", pr))
+	//}
 	return pr.req.Payload
 }
 
