@@ -52,6 +52,7 @@ type Sender interface {
 	Update(v interface{})
 	Finalize(v interface{}, err error)
 	Status() Status
+	DebugString() string
 }
 
 type Receiver interface {
@@ -59,6 +60,7 @@ type Receiver interface {
 	Cancel()
 	Status() Status
 	Request() interface{}
+	DebugString() string
 }
 
 type Status struct {
@@ -108,6 +110,8 @@ func New(req Request) *Pipe {
 		Sender:   pw,
 		Receiver: pr,
 	}
+	pw.id = fmt.Sprintf("%p", p)
+	pr.id = fmt.Sprintf("%p", p)
 
 	cancelCh.OnSendCompletion = func() {
 		v, ok := cancelCh.Receive()
@@ -133,10 +137,15 @@ type sender struct {
 	req         Request
 	sendChannel *channel
 	mu          sync.Mutex
+	id          string
 }
 
 func (pw *sender) Status() Status {
 	return pw.status
+}
+
+func (pw *sender) DebugString() string {
+	return pw.id
 }
 
 func (pw *sender) Request() Request {
@@ -173,8 +182,12 @@ type receiver struct {
 	req         Request
 	recvChannel *channel
 	sendChannel *channel
+	id          string
 }
 
+func (pr *receiver) DebugString() string {
+	return pr.id
+}
 func (pr *receiver) Request() interface{} {
 	//if pr.req.Payload == nil {
 	//	// a receiver can have a nil payload when pipe.NewWithFunction(f) is called
