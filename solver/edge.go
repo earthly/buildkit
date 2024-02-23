@@ -712,7 +712,7 @@ func (e *edge) recalcCurrentState() {
 func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receiver) (edgeStatusType, bool) {
 	fmt.Printf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
 	for _, req := range incoming {
-		fmt.Printf("  depends on %+v\n", req.Request())
+		fmt.Printf("  depends on %+v; edgereq=%+v\n", req.Request(), req.Request().Payload.(*edgeRequest))
 	}
 	for _, req := range allPipes {
 		fmt.Printf("  affects %+v\n", req.Request())
