@@ -351,6 +351,7 @@ func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
 
 	cache := map[Vertex]Vertex{}
 
+	fmt.Printf("jl.load called with job %p id=%s\n", j, j.id)
 	return jl.loadUnlocked(v, parent, j, cache)
 }
 
@@ -574,6 +575,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
+	fmt.Printf("call to job.Build j=%p id=%s\n", j, j.id)
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		j.span = span
 	}

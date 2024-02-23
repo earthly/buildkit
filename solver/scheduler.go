@@ -238,6 +238,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 		s.mu.Unlock()
 		return nil, errors.Errorf("invalid request %v for build", edge)
 	}
+	fmt.Printf("scheduler.build got edge %p for dgst %s\n", e, edge.Vertex.Digest())
 
 	wait := make(chan struct{})
 
@@ -268,6 +269,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 
 // newPipe creates a new request pipe between two edges
 func (s *scheduler) newPipe(target, from *edge, req pipe.Request) *pipe.Pipe {
+	fmt.Printf("newPipe from %p to %p\n", from, target)
 	p := &edgePipe{
 		Pipe:   pipe.New(req),
 		Target: target,
