@@ -38,6 +38,7 @@ func (c *channel) Receive() (interface{}, bool) {
 type Pipe struct {
 	Sender              Sender
 	Receiver            Receiver
+	ID                  string
 	OnReceiveCompletion func()
 	OnSendCompletion    func()
 }
@@ -112,6 +113,7 @@ func New(req Request) *Pipe {
 	}
 	pw.id = fmt.Sprintf("%p", p)
 	pr.id = fmt.Sprintf("%p", p)
+	p.ID = fmt.Sprintf("%p", p)
 
 	cancelCh.OnSendCompletion = func() {
 		v, ok := cancelCh.Receive()

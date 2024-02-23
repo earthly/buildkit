@@ -269,12 +269,12 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 
 // newPipe creates a new request pipe between two edges
 func (s *scheduler) newPipe(target, from *edge, req pipe.Request) *pipe.Pipe {
-	fmt.Printf("newPipe from %p to %p\n", from, target)
 	p := &edgePipe{
 		Pipe:   pipe.New(req),
 		Target: target,
 		From:   from,
 	}
+	fmt.Printf("newPipe from %p to %p; pipe ID=%s\n", from, target, p.Pipe.ID)
 
 	s.signal(target)
 	if from != nil {
@@ -301,6 +301,7 @@ func (s *scheduler) newRequestWithFunc(e *edge, f func(context.Context) (interfa
 		Pipe: pp,
 		From: e,
 	}
+	fmt.Printf("newPipeWithFunction edge=%p; pipe ID=%s\n", e, p.Pipe.ID)
 	p.OnSendCompletion = func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
