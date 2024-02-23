@@ -710,7 +710,7 @@ func (e *edge) recalcCurrentState() {
 // respondToIncoming responds to all incoming requests. completing or
 // updating them when possible
 func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receiver) (edgeStatusType, bool) {
-	fmt.Printf("edge %p dgst=%s respondToIncoming\n")
+	fmt.Printf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
 	for _, req := range incoming {
 		fmt.Printf("  depends on %+v\n", req.Request())
 	}
