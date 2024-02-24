@@ -256,6 +256,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 
 	go func() {
 		<-ctx.Done()
+		fmt.Printf("scheduler build index=%d dgst=%s edge=%p is calling cancel on pipe id=%s\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
 		p.Receiver.Cancel()
 	}()
 
