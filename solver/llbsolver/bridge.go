@@ -79,6 +79,11 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 		return nil, err
 	}
 
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("llbBridge.loadResult original ctx is done, def=%p\n", def)
+	}(ctx)
+
 	// TODO FIXME earthly-specific wait group is required to ensure the remotecache/registry's ResolveCacheImporterFunc can run
 	// which requires the session to remain open in order to get dockerhub (or any other registry) credentials.
 	// It seems like the cleaner approach is to bake this in somewhere into the edge or Load
