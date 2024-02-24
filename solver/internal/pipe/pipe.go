@@ -3,6 +3,7 @@ package pipe
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 
@@ -215,7 +216,7 @@ func (pr *receiver) Receive() bool {
 }
 
 func (pr *receiver) Cancel() {
-	fmt.Printf("receiver.Cancel id=%s called\n", pr.id)
+	fmt.Printf("receiver.Cancel id=%s called by %s\n", pr.id, debug.Stack())
 	req := pr.req
 	if req.Canceled {
 		return
