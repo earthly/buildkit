@@ -119,11 +119,11 @@ func New(req Request) *Pipe {
 	cancelCh.OnSendCompletion = func() {
 		v, ok := cancelCh.Receive()
 		if ok {
-			fmt.Printf("cancelCh.OnSendCompletion set %+v\n", id, v.(Request))
+			fmt.Printf("cancelCh.OnSendCompletion %s set %+v\n", id, v.(Request))
 			pw.setRequest(v.(Request))
 		}
 		if p.OnReceiveCompletion != nil {
-			fmt.Printf("cancelCh.OnSendCompletion calling OnReceiveCompletion\n", id)
+			fmt.Printf("cancelCh.OnSendCompletion %s calling OnReceiveCompletion\n", id)
 			p.OnReceiveCompletion()
 		}
 	}
