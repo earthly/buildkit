@@ -111,16 +111,19 @@ func New(req Request) *Pipe {
 		Sender:   pw,
 		Receiver: pr,
 	}
-	pw.id = fmt.Sprintf("%p", p)
-	pr.id = fmt.Sprintf("%p", p)
-	p.ID = fmt.Sprintf("%p", p)
+	id := fmt.Sprintf("%p", p)
+	pw.id = id
+	pr.id = id
+	p.ID = id
 
 	cancelCh.OnSendCompletion = func() {
 		v, ok := cancelCh.Receive()
 		if ok {
+			fmt.Printf("cancelCh.OnSendCompletion set %+v\n", id, v.(Request))
 			pw.setRequest(v.(Request))
 		}
 		if p.OnReceiveCompletion != nil {
+			fmt.Printf("cancelCh.OnSendCompletion calling OnReceiveCompletion\n", id)
 			p.OnReceiveCompletion()
 		}
 	}
@@ -163,11 +166,13 @@ func (pw *sender) setRequest(req Request) {
 }
 
 func (pw *sender) Update(v interface{}) {
+	fmt.Printf("sender.update id=%s, v=%p\n", pw.id, v)
 	pw.status.Value = v
 	pw.sendChannel.Send(pw.status)
 }
 
 func (pw *sender) Finalize(v interface{}, err error) {
+	fmt.Printf("sender.Finalize id=%s, v=%p\n", pw.id, v)
 	if v != nil {
 		pw.status.Value = v
 	}
@@ -201,13 +206,16 @@ func (pr *receiver) Request() interface{} {
 func (pr *receiver) Receive() bool {
 	v, ok := pr.recvChannel.Receive()
 	if !ok {
+		fmt.Printf("receiver.Receive id=%s, not ok\n", pr.id)
 		return false
 	}
 	pr.status = v.(Status)
+	fmt.Printf("receiver.Receive id=%s, ok, status set to %+v\n", pr.id, pr.status)
 	return true
 }
 
 func (pr *receiver) Cancel() {
+	fmt.Printf("receiver.Cancel id=%s called\n", pr.id)
 	req := pr.req
 	if req.Canceled {
 		return
