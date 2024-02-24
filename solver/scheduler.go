@@ -263,6 +263,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 	<-wait
 
 	if err := p.Receiver.Status().Err; err != nil {
+		fmt.Printf("scheduler build index=%d dgst=%s edge=%p pipe id=%s got an err %v\n", edge.Index, edge.Vertex.Digest(), e, p.ID, err)
 		return nil, err
 	}
 	return p.Receiver.Status().Value.(*edgeState).result.CloneCachedResult(), nil
