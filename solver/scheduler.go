@@ -251,6 +251,11 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 	}
 	s.mu.Unlock()
 
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("scheduler build index=%d dgst=%s edge=%p with pipe id=%s original context was canceled\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
+	}(ctx)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
