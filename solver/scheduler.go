@@ -266,7 +266,9 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 		fmt.Printf("scheduler build index=%d dgst=%s edge=%p pipe id=%s got an err %v\n", edge.Index, edge.Vertex.Digest(), e, p.ID, err)
 		return nil, err
 	}
-	return p.Receiver.Status().Value.(*edgeState).result.CloneCachedResult(), nil
+	res := p.Receiver.Status().Value.(*edgeState).result.CloneCachedResult()
+	fmt.Printf("scheduler build index=%d dgst=%s edge=%p pipe id=%s is ok!\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
+	return res, nil
 }
 
 // newPipe creates a new request pipe between two edges
