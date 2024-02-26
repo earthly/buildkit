@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -233,6 +234,9 @@ func (sm *Manager) handleConn(ctx context.Context, conn net.Conn, opts map[strin
 	id := h.Get(headerSessionID)
 	name := h.Get(headerSessionName)
 	sharedKey := h.Get(headerSessionSharedKey)
+
+	bklog.G(ctx).Debugf("handleConn id=%s name=%s sharedKey=%s started", id, name, sharedKey)
+	defer bklog.G(ctx).Debugf("handleConn id=%s name=%s sharedKey=%s ended", id, name, sharedKey)
 
 	ctx, cc, err := grpcClientConn(ctx, conn, sm.healthCfg)
 	if err != nil {
