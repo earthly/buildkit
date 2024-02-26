@@ -506,7 +506,14 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	conn, closeCh, opts := grpchijack.Hijack(stream)
 	defer conn.Close()
 
-	ctx, cancel := context.WithCancel(stream.Context())
+	streamContext := stream.Context()
+
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		bklog.G(ctx).Debugf("session stream context is done")
+	}(streamContext)
+
+	ctx, cancel := context.WithCancel(streamContext)
 	go func() {
 		<-closeCh
 		bklog.G(ctx).Debugf("session got closeCh done, issuing cancel()")
