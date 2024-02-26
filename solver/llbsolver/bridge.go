@@ -81,7 +81,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("llbBridge.loadResult original ctx is done, def=%p\n", def)
+		fmt.Printf("llbBridge.loadResult original context is done, def=%p\n", def)
 	}(ctx)
 
 	// TODO FIXME earthly-specific wait group is required to ensure the remotecache/registry's ResolveCacheImporterFunc can run
