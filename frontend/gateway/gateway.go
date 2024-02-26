@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -651,6 +652,11 @@ func (lbf *llbBridgeForwarder) registerResultIDs(results ...solver.Result) (ids 
 }
 
 func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) (*pb.SolveResponse, error) {
+	fmt.Printf("llbBridgeForwarder.Solve for req=%p called by %s\n", req, debug.Stack())
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		fmt.Printf("llbBridgeForwarder.Solve for req=%p context is done\n", req)
+	}(ctx)
 	var cacheImports []frontend.CacheOptionsEntry
 	for _, e := range req.CacheImports {
 		cacheImports = append(cacheImports, frontend.CacheOptionsEntry{
@@ -693,7 +699,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			if ref == nil {
 				id = ""
 			} else {
-				fmt.Printf("lbf.Solve1 storing %s -> %s\n", id, ref.ID())
+				fmt.Printf("lbf.Solve1 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
 				lbf.refs[id] = ref
 			}
 			ids[k] = id
@@ -718,7 +724,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			id = ""
 		} else {
 			def = ref.Definition()
-			fmt.Printf("lbf.Solve2 storing %s -> %s\n", id, ref.ID())
+			fmt.Printf("lbf.Solve2 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
 			lbf.refs[id] = ref
 		}
 		defaultID = id
@@ -742,7 +748,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 				if att.Ref != nil {
 					id := identity.NewID()
 					def := att.Ref.Definition()
-					fmt.Printf("lbf.Solve3 storing %s -> %s\n", id, att.Ref.ID())
+					fmt.Printf("lbf.Solve3 storing %s -> %s (req ptr=%p)\n", id, att.Ref.ID(), req)
 					lbf.refs[id] = att.Ref
 					pbAtt.Ref = &pb.Ref{Id: id, Def: def}
 				}
