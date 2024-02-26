@@ -521,6 +521,7 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	}()
 
 	err := c.opt.SessionManager.HandleConn(ctx, conn, opts)
+	time.Sleep(time.Millisecond * 200) // earthly hacking, see if ctx.Done() occurs first
 	bklog.G(ctx).Debugf("session finished: %v", err)
 	return err
 }
