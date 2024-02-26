@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/pkg/errors"
 )
 
@@ -74,7 +75,7 @@ type Status struct {
 
 func NewWithFunction(f func(context.Context) (interface{}, error)) (*Pipe, func()) {
 	p := New(Request{})
-	fmt.Printf("%p) created via NewWithFunction\n", p.Receiver)
+	bklog.L.Debugf("%p) created via NewWithFunction\n", p.Receiver)
 
 	ctx, cancel := context.WithCancel(context.TODO())
 
@@ -106,7 +107,7 @@ func New(req Request) *Pipe {
 		recvChannel: roundTripCh,
 		sendChannel: cancelCh,
 	}
-	fmt.Printf("%p) new receiver with req %+v\n", pr, req)
+	bklog.L.Debugf("%p) new receiver with req %+v\n", pr, req)
 
 	p := &Pipe{
 		Sender:   pw,
@@ -120,11 +121,11 @@ func New(req Request) *Pipe {
 	cancelCh.OnSendCompletion = func() {
 		v, ok := cancelCh.Receive()
 		if ok {
-			fmt.Printf("cancelCh.OnSendCompletion %s set %+v\n", id, v.(Request))
+			bklog.L.Debugf("cancelCh.OnSendCompletion %s set %+v\n", id, v.(Request))
 			pw.setRequest(v.(Request))
 		}
 		if p.OnReceiveCompletion != nil {
-			fmt.Printf("cancelCh.OnSendCompletion %s calling OnReceiveCompletion\n", id)
+			bklog.L.Debugf("cancelCh.OnSendCompletion %s calling OnReceiveCompletion\n", id)
 			p.OnReceiveCompletion()
 		}
 	}
@@ -167,13 +168,13 @@ func (pw *sender) setRequest(req Request) {
 }
 
 func (pw *sender) Update(v interface{}) {
-	fmt.Printf("sender.update id=%s, v=%p\n", pw.id, v)
+	bklog.L.Debugf("sender.update id=%s, v=%p\n", pw.id, v)
 	pw.status.Value = v
 	pw.sendChannel.Send(pw.status)
 }
 
 func (pw *sender) Finalize(v interface{}, err error) {
-	fmt.Printf("sender.Finalize id=%s, v=%p\n", pw.id, v)
+	bklog.L.Debugf("sender.Finalize id=%s, v=%p\n", pw.id, v)
 	if v != nil {
 		pw.status.Value = v
 	}
@@ -207,16 +208,16 @@ func (pr *receiver) Request() interface{} {
 func (pr *receiver) Receive() bool {
 	v, ok := pr.recvChannel.Receive()
 	if !ok {
-		fmt.Printf("receiver.Receive id=%s, not ok\n", pr.id)
+		bklog.L.Debugf("receiver.Receive id=%s, not ok\n", pr.id)
 		return false
 	}
 	pr.status = v.(Status)
-	fmt.Printf("receiver.Receive id=%s, ok, status set to %+v\n", pr.id, pr.status)
+	bklog.L.Debugf("receiver.Receive id=%s, ok, status set to %+v\n", pr.id, pr.status)
 	return true
 }
 
 func (pr *receiver) Cancel() {
-	fmt.Printf("receiver.Cancel id=%s called by %s\n", pr.id, debug.Stack())
+	bklog.L.Debugf("receiver.Cancel id=%s called by %s\n", pr.id, debug.Stack())
 	req := pr.req
 	if req.Canceled {
 		return

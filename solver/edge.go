@@ -2,7 +2,6 @@ package solver
 
 import (
 	"context"
-	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -36,7 +35,7 @@ func newEdge(ed Edge, op activeOp, index *edgeIndex) *edge {
 		cacheRecordsLoaded: map[string]struct{}{},
 		index:              index,
 	}
-	fmt.Printf("newEdge %p for dgst=%s\n", e, ed.Vertex.Digest())
+	bklog.L.Debugf("newEdge %p for dgst=%s\n", e, ed.Vertex.Digest())
 	return e
 }
 
@@ -130,7 +129,7 @@ func (e *edge) takeOwnership(old *edge) {
 	if old.released {
 		panic("old edge already released")
 	}
-	fmt.Printf("takeOwnership e=%p old=%p count=%d+%d+1 dgst=%s\n", e, old, e.releaserCount, old.releaserCount, e.edge.Vertex.Digest())
+	bklog.L.Debugf("takeOwnership e=%p old=%p count=%d+%d+1 dgst=%s\n", e, old, e.releaserCount, old.releaserCount, e.edge.Vertex.Digest())
 	e.releaserCount += old.releaserCount + 1
 	old.owner = e
 	old.releaseResult()
@@ -138,7 +137,7 @@ func (e *edge) takeOwnership(old *edge) {
 
 // release releases the edge resources
 func (e *edge) release() {
-	fmt.Printf("release %p count=%d dgst=%s\n", e, e.releaserCount, e.edge.Vertex.Digest())
+	bklog.L.Debugf("release %p count=%d dgst=%s\n", e, e.releaserCount, e.edge.Vertex.Digest())
 	if e.releaserCount > 0 {
 		e.releaserCount--
 		return
@@ -190,7 +189,7 @@ func (e *edge) isComplete() bool {
 func (e *edge) finishIncoming(req pipe.Sender) {
 	err := e.err
 	if req.Request().Canceled && err == nil {
-		fmt.Printf("request dgst=%s was canceled, setting err=context.Canceled, called by %s\n", e.edge.Vertex.Digest(), debug.Stack())
+		bklog.L.Debugf("request dgst=%s was canceled, setting err=context.Canceled, called by %s\n", e.edge.Vertex.Digest(), debug.Stack())
 		err = context.Canceled
 	}
 	if debugScheduler {
@@ -710,12 +709,12 @@ func (e *edge) recalcCurrentState() {
 // respondToIncoming responds to all incoming requests. completing or
 // updating them when possible
 func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receiver) (edgeStatusType, bool) {
-	fmt.Printf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
+	bklog.L.Debugf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
 	for _, req := range incoming {
-		fmt.Printf("  depends on %s %+v; edgereq=%+v\n", req.DebugString(), req.Request(), req.Request().Payload.(*edgeRequest))
+		bklog.L.Debugf("  depends on %s %+v; edgereq=%+v\n", req.DebugString(), req.Request(), req.Request().Payload.(*edgeRequest))
 	}
 	for _, req := range allPipes {
-		fmt.Printf("  affects %s %+v\n", req.DebugString(), req.Request())
+		bklog.L.Debugf("  affects %s %+v\n", req.DebugString(), req.Request())
 	}
 
 	// detect the result state for the requests
@@ -749,7 +748,7 @@ func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receive
 	}
 
 	if allIncomingCanComplete && e.hasActiveOutgoing {
-		fmt.Printf("Cancel called due to allIncomingCanComplete\n")
+		bklog.L.Debugf("Cancel called due to allIncomingCanComplete\n")
 		// cancel all current requests
 		for _, p := range allPipes {
 			p.Cancel()
@@ -842,7 +841,7 @@ func (e *edge) createInputRequests(desiredState edgeStatusType, f *pipeFactory, 
 			addNew := true
 			if dep.req != nil && !dep.req.Status().Completed {
 				if dep.req.Request().(*edgeRequest).desiredState != desiredStateDep {
-					fmt.Printf("Cancel called due to here2 %s != %s\n", dep.req.Request().(*edgeRequest).desiredState.String(), desiredStateDep.String())
+					bklog.L.Debugf("Cancel called due to here2 %s != %s\n", dep.req.Request().(*edgeRequest).desiredState.String(), desiredStateDep.String())
 					dep.req.Cancel()
 				} else {
 					addNew = false
@@ -887,7 +886,7 @@ func (e *edge) execIfPossible(f *pipeFactory) bool {
 		e.execReq = f.NewFuncRequest(e.loadCache)
 		e.execCacheLoad = true
 		for req := range e.depRequests {
-			fmt.Printf("Cancel called due to here3\n")
+			bklog.L.Debugf("Cancel called due to here3\n")
 			req.Cancel()
 		}
 		return true

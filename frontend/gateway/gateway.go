@@ -652,10 +652,10 @@ func (lbf *llbBridgeForwarder) registerResultIDs(results ...solver.Result) (ids 
 }
 
 func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) (*pb.SolveResponse, error) {
-	fmt.Printf("llbBridgeForwarder.Solve for req=%p called by %s\n", req, debug.Stack())
+	bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p called by %s\n", req, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("llbBridgeForwarder.Solve for req=%p context is done\n", req)
+		bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p context is done\n", req)
 	}(ctx)
 	var cacheImports []frontend.CacheOptionsEntry
 	for _, e := range req.CacheImports {
@@ -699,7 +699,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			if ref == nil {
 				id = ""
 			} else {
-				fmt.Printf("lbf.Solve1 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
+				bklog.L.Debugf("lbf.Solve1 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
 				lbf.refs[id] = ref
 			}
 			ids[k] = id
@@ -724,7 +724,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			id = ""
 		} else {
 			def = ref.Definition()
-			fmt.Printf("lbf.Solve2 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
+			bklog.L.Debugf("lbf.Solve2 storing %s -> %s (req ptr=%p)\n", id, ref.ID(), req)
 			lbf.refs[id] = ref
 		}
 		defaultID = id
@@ -748,7 +748,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 				if att.Ref != nil {
 					id := identity.NewID()
 					def := att.Ref.Definition()
-					fmt.Printf("lbf.Solve3 storing %s -> %s (req ptr=%p)\n", id, att.Ref.ID(), req)
+					bklog.L.Debugf("lbf.Solve3 storing %s -> %s (req ptr=%p)\n", id, att.Ref.ID(), req)
 					lbf.refs[id] = att.Ref
 					pbAtt.Ref = &pb.Ref{Id: id, Def: def}
 				}
@@ -794,10 +794,10 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 }
 
 func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path string) (cache.ImmutableRef, error) {
-	fmt.Printf("getImmutableRef called on %s %s\n", id, path)
+	bklog.L.Debugf("getImmutableRef called on %s %s\n", id, path)
 	go func() {
 		<-ctx.Done()
-		fmt.Printf("getImmutableRef called on %s %s context is done\n", id, path)
+		bklog.L.Debugf("getImmutableRef called on %s %s context is done\n", id, path)
 	}()
 
 	lbf.mu.Lock()
@@ -812,7 +812,7 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 
 	r, err := ref.Result(ctx)
 	if err != nil {
-		fmt.Printf("getImmutableRef called on %s %s calls ref.Result got err=%v\n", id, path, err)
+		bklog.L.Debugf("getImmutableRef called on %s %s calls ref.Result got err=%v\n", id, path, err)
 		return nil, lbf.wrapSolveError(err)
 	}
 
@@ -825,10 +825,10 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 }
 
 func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileRequest) (*pb.ReadFileResponse, error) {
-	fmt.Printf("llbBridgeForwarder.ReadFile called on %s %s\n", req.Ref, req.FilePath)
+	bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s\n", req.Ref, req.FilePath)
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("llbBridgeForwarder.ReadFile called on %s %s context done\n", req.Ref, req.FilePath)
+		bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s context done\n", req.Ref, req.FilePath)
 	}(ctx)
 
 	ctx = tracing.ContextWithSpanFromContext(ctx, lbf.callCtx)
@@ -865,16 +865,16 @@ func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileReq
 }
 
 func (lbf *llbBridgeForwarder) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*pb.ReadDirResponse, error) {
-	fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s\n", req.Ref, req.DirPath)
+	bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s\n", req.Ref, req.DirPath)
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s context done\n", req.Ref, req.DirPath)
+		bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s context done\n", req.Ref, req.DirPath)
 	}(ctx)
 	ctx = tracing.ContextWithSpanFromContext(ctx, lbf.callCtx)
 
 	ref, err := lbf.getImmutableRef(ctx, req.Ref, req.DirPath)
 	if err != nil {
-		fmt.Printf("llbBridgeForwarder.ReadDir called on %s %s getImmutableRef err=%v\n", req.Ref, req.DirPath, err)
+		bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s getImmutableRef err=%v\n", req.Ref, req.DirPath, err)
 		return nil, err
 	}
 
@@ -1550,7 +1550,7 @@ func (lbf *llbBridgeForwarder) cloneRef(id string) (solver.ResultProxy, error) {
 	}
 
 	s1, s2 := solver.SplitResultProxy(r)
-	fmt.Printf("lbf.cloneRef storing %s -> %s\n", id, s1.ID())
+	bklog.L.Debugf("lbf.cloneRef storing %s -> %s\n", id, s1.ID())
 	lbf.refs[id] = s1
 	return s2, nil
 }

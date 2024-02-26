@@ -81,7 +81,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("llbBridge.loadResult original context is done, def=%p\n", def)
+		bklog.L.Debugf("llbBridge.loadResult original context is done, def=%p\n", def)
 	}(ctx)
 
 	// TODO FIXME earthly-specific wait group is required to ensure the remotecache/registry's ResolveCacheImporterFunc can run
@@ -159,7 +159,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load LLB")
 	}
-	fmt.Printf("\nLoad(def=%p) -> digest=%s\n%s\n", def, edge.Vertex.Digest(), graphToString("", edge))
+	bklog.L.Debugf("\nLoad(def=%p) -> digest=%s\n%s\n", def, edge.Vertex.Digest(), graphToString("", edge))
 
 	if len(dpc.ids) > 0 {
 		ids := make([]string, 0, len(dpc.ids))
@@ -174,9 +174,9 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	}
 
 	res, err := b.builder.Build(ctx, edge)
-	fmt.Printf("b.builder.Build def=%p digest=%s returned err=%v\n", def, edge.Vertex.Digest(), err)
+	bklog.L.Debugf("b.builder.Build def=%p digest=%s returned err=%v\n", def, edge.Vertex.Digest(), err)
 	if err != nil {
-		fmt.Printf("got an error when calling build on def=%p digest=%s; gonna stall here\n\n\n", def, edge.Vertex.Digest())
+		bklog.L.Debugf("got an error when calling build on def=%p digest=%s; gonna stall here\n\n\n", def, edge.Vertex.Digest())
 		time.Sleep(time.Hour * 24)
 		return nil, err
 	}
@@ -330,10 +330,10 @@ func (rp *resultProxy) loadResult(ctx context.Context) (solver.CachedResultWithP
 }
 
 func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err error) {
-	fmt.Printf("resultProxy.Result id=%s called from %s\n", rp.id, debug.Stack())
+	bklog.L.Debugf("resultProxy.Result id=%s called from %s\n", rp.id, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("resultProxy.Result id=%s got a context cancel\n", rp.id) // this is getting cancelled
+		bklog.L.Debugf("resultProxy.Result id=%s got a context cancel\n", rp.id) // this is getting cancelled
 	}(ctx)
 
 	defer func() {
@@ -351,10 +351,10 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 		}
 		rp.mu.Unlock()
 
-		fmt.Printf("resultProxy.Result id=%s calling loadResult on def=%p\n", rp.id, rp.req.Definition)
+		bklog.L.Debugf("resultProxy.Result id=%s calling loadResult on def=%p\n", rp.id, rp.req.Definition)
 
 		v, err := rp.loadResult(ctx) // this makes it's way into the scheduler (which exeperences a cancel)
-		fmt.Printf("resultProxy.Result %s loadResult returned %+v err=%v\n", rp.id, v, err)
+		bklog.L.Debugf("resultProxy.Result %s loadResult returned %+v err=%v\n", rp.id, v, err)
 		if err != nil {
 			select {
 			case <-ctx.Done():

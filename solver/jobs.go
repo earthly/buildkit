@@ -10,6 +10,7 @@ import (
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/solver/errdefs"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/flightcontrol"
 	"github.com/moby/buildkit/util/progress"
 	"github.com/moby/buildkit/util/progress/controller"
@@ -140,25 +141,25 @@ func (s *state) builder() *subBuilder {
 func (s *state) getEdge(index Index) *edge {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	fmt.Printf("getEdge %d dgst=%s\n", index, s.vtx.Digest())
+	bklog.L.Debugf("getEdge %d dgst=%s\n", index, s.vtx.Digest())
 	if e, ok := s.edges[index]; ok {
-		fmt.Printf("getEdge %d e=%p\n", index, e)
+		bklog.L.Debugf("getEdge %d e=%p\n", index, e)
 		for e.owner != nil {
-			fmt.Printf("getEdge %d loop e=%p\n", index, e)
+			bklog.L.Debugf("getEdge %d loop e=%p\n", index, e)
 			e = e.owner
 		}
-		fmt.Printf("getEdge %d from cache e=%p\n", index, e)
+		bklog.L.Debugf("getEdge %d from cache e=%p\n", index, e)
 		return e
 	}
 
 	if s.op == nil {
-		fmt.Printf("getEdge %d newSharedOp\n", index)
+		bklog.L.Debugf("getEdge %d newSharedOp\n", index)
 		s.op = newSharedOp(s.opts.ResolveOpFunc, s.opts.DefaultCache, s)
 	}
 
 	e := newEdge(Edge{Index: index, Vertex: s.vtx}, s.op, s.index)
 	s.edges[index] = e
-	fmt.Printf("getEdge %d returning new edge %p\n", index, e)
+	bklog.L.Debugf("getEdge %d returning new edge %p\n", index, e)
 	return e
 }
 
@@ -176,7 +177,7 @@ func (s *state) setEdge(index Index, targetEdge *edge, targetState *state) {
 	} else {
 		e = newEdge(Edge{Index: index, Vertex: s.vtx}, s.op, s.index)
 		s.edges[index] = e
-		fmt.Printf("setEdge %d storing new edge %p\n", index, e)
+		bklog.L.Debugf("setEdge %d storing new edge %p\n", index, e)
 	}
 	targetEdge.takeOwnership(e)
 
@@ -205,7 +206,7 @@ func (s *state) combinedCacheManager() CacheManager {
 }
 
 func (s *state) Release() {
-	fmt.Printf("state %p Release()\n", s)
+	bklog.L.Debugf("state %p Release()\n", s)
 	for _, e := range s.edges {
 		for e.owner != nil {
 			e = e.owner
@@ -224,7 +225,7 @@ type subBuilder struct {
 }
 
 func (sb *subBuilder) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
-	fmt.Printf("call to subBuilder.Build\n")
+	bklog.L.Debugf("call to subBuilder.Build\n")
 	res, err := sb.solver.subBuild(ctx, e, sb.vtx)
 	if err != nil {
 		return nil, err
@@ -316,7 +317,7 @@ func (jl *Solver) getState(e Edge) *state {
 }
 
 func (jl *Solver) getEdge(e Edge) *edge {
-	fmt.Printf("%p jl.getEdge\n", jl)
+	bklog.L.Debugf("%p jl.getEdge\n", jl)
 	jl.mu.RLock()
 	defer jl.mu.RUnlock()
 
@@ -328,7 +329,7 @@ func (jl *Solver) getEdge(e Edge) *edge {
 		return nil
 	}
 	gotEdge := st.getEdge(e.Index)
-	fmt.Printf("%p jl.getEdge dgst=%s got state=%p returning edge %p\n", jl, dgst, st, gotEdge)
+	bklog.L.Debugf("%p jl.getEdge dgst=%s got state=%p returning edge %p\n", jl, dgst, st, gotEdge)
 	return gotEdge
 }
 
@@ -351,13 +352,13 @@ func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
 
 	cache := map[Vertex]Vertex{}
 
-	fmt.Printf("jl.load called with job %p id=%s\n", j, j.id)
+	bklog.L.Debugf("jl.load called with job %p id=%s\n", j, j.id)
 	return jl.loadUnlocked(v, parent, j, cache)
 }
 
 func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex) (Vertex, error) {
 	if v, ok := cache[v]; ok {
-		fmt.Printf("loadUnlocked %s cache hit\n", v.Digest())
+		bklog.L.Debugf("loadUnlocked %s cache hit\n", v.Digest())
 		return v, nil
 	}
 	origVtx := v
@@ -372,7 +373,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 	}
 
 	dgst := v.Digest()
-	fmt.Printf("loadUnlocked %s\n", dgst)
+	bklog.L.Debugf("loadUnlocked %s\n", dgst)
 
 	dgstWithoutCache := digest.FromBytes([]byte(fmt.Sprintf("%s-ignorecache", dgst)))
 
@@ -385,19 +386,19 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 		// incorrect digest and can incorrectly delete it while it is still in use.
 		v = st.vtx
 		dgstTrackerInst.add(dgst, "loadUnlocked-found-dgstWithoutCache")
-		fmt.Printf("actives -ignorecache found %s -> %p\n", dgst, st)
+		bklog.L.Debugf("actives -ignorecache found %s -> %p\n", dgst, st)
 	}
 
 	if !ok {
 		st, ok = jl.actives[dgst]
 		if ok {
-			fmt.Printf("actives -ignorecache not found, but %s found -> %p\n", dgst, st)
+			bklog.L.Debugf("actives -ignorecache not found, but %s found -> %p\n", dgst, st)
 		}
 
 		dgstTrackerInst.add(dgst, "loadUnlocked-not-found-dgstWithoutCache")
 		// !ignorecache merges with ignorecache but ignorecache doesn't merge with !ignorecache
 		if ok && !st.vtx.Options().IgnoreCache && v.Options().IgnoreCache {
-			fmt.Printf("ignorecache is set, changing %s to %s\n", dgst, dgstWithoutCache)
+			bklog.L.Debugf("ignorecache is set, changing %s to %s\n", dgst, dgstWithoutCache)
 			dgst = dgstWithoutCache
 		}
 
@@ -409,7 +410,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 
 		st, ok = jl.actives[dgst]
 		if ok {
-			fmt.Printf("actives %s found -> %p\n", dgst, st)
+			bklog.L.Debugf("actives %s found -> %p\n", dgst, st)
 		}
 	}
 
@@ -432,7 +433,7 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 			origDigest:   origVtx.Digest(),
 		}
 		jl.actives[dgst] = st
-		fmt.Printf("actives add %s -> %p\n", dgst, st)
+		bklog.L.Debugf("actives add %s -> %p\n", dgst, st)
 		dgstTrackerInst.add(dgst, "loadUnlocked-add")
 	} else {
 		dgstTrackerInst.add(dgst, "loadUnlocked-exists")
@@ -449,20 +450,20 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 
 	if j != nil {
 		if _, ok := st.jobs[j]; !ok {
-			fmt.Printf("adding job %p to state %p\n", j, st)
+			bklog.L.Debugf("adding job %p to state %p\n", j, st)
 			st.jobs[j] = struct{}{}
 		} else {
-			fmt.Printf("adding job %p to state %p already done\n", j, st)
+			bklog.L.Debugf("adding job %p to state %p already done\n", j, st)
 		}
 	} else {
 		dgstTrackerInst.add(dgst, "loadUnlocked-nil-job")
-		fmt.Printf("job is nil cant add to state %p\n", st)
+		bklog.L.Debugf("job is nil cant add to state %p\n", st)
 	}
 	st.mu.Unlock()
 
 	if parent != nil {
 		if _, ok := st.parents[parent.Digest()]; !ok {
-			fmt.Printf("adding parent dgst %s to state %p\n", parent.Digest(), st)
+			bklog.L.Debugf("adding parent dgst %s to state %p\n", parent.Digest(), st)
 			st.parents[parent.Digest()] = struct{}{}
 			parentState, ok := jl.actives[parent.Digest()]
 			if !ok {
@@ -474,10 +475,10 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 				st.cache[id] = c
 			}
 		} else {
-			fmt.Printf("adding parent dgst %s to state %p already done\n", parent.Digest(), st)
+			bklog.L.Debugf("adding parent dgst %s to state %p already done\n", parent.Digest(), st)
 		}
 	} else {
-		fmt.Printf("state %p has no parent\n", st)
+		bklog.L.Debugf("state %p has no parent\n", st)
 	}
 
 	jl.connectProgressFromState(st, st)
@@ -497,7 +498,7 @@ func (jl *Solver) connectProgressFromState(target, src *state) {
 		}
 	}
 	for p := range src.parents {
-		fmt.Printf("jl.connectProgressFromState target=%p dgst=%s from src %p\n", target, p, src)
+		bklog.L.Debugf("jl.connectProgressFromState target=%p dgst=%s from src %p\n", target, p, src)
 		jl.connectProgressFromState(target, jl.actives[p])
 	}
 }
@@ -568,14 +569,14 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 			jl.deleteIfUnreferenced(chKey, chState)
 		}
 		st.Release()
-		fmt.Printf("delete actives %s\n", k)
+		bklog.L.Debugf("delete actives %s\n", k)
 		delete(jl.actives, k)
 		dgstTrackerInst.add(k, "delete")
 	}
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
-	fmt.Printf("call to job.Build j=%p id=%s\n", j, j.id)
+	bklog.L.Debugf("call to job.Build j=%p id=%s\n", j, j.id)
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		j.span = span
 	}
@@ -641,7 +642,7 @@ func (j *Job) CloseProgress() {
 }
 
 func (j *Job) Discard() error {
-	fmt.Printf("call to job.Discard j=%p\n", j)
+	bklog.L.Debugf("call to job.Discard j=%p\n", j)
 	j.list.mu.Lock()
 	defer j.list.mu.Unlock()
 
@@ -650,7 +651,7 @@ func (j *Job) Discard() error {
 	for k, st := range j.list.actives {
 		st.mu.Lock()
 		if _, ok := st.jobs[j]; ok {
-			fmt.Printf("removing job %p from state %p\n", j, st)
+			bklog.L.Debugf("removing job %p from state %p\n", j, st)
 			delete(st.jobs, j)
 			j.list.deleteIfUnreferenced(k, st)
 		}

@@ -231,14 +231,14 @@ func (s *scheduler) signal(e *edge) {
 
 // build evaluates edge into a result
 func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) {
-	fmt.Printf("scheduler got edge to build index=%d dgst=%s numinputs=%d\n", edge.Index, edge.Vertex.Digest(), len(edge.Vertex.Inputs()))
+	bklog.L.Debugf("scheduler got edge to build index=%d dgst=%s numinputs=%d\n", edge.Index, edge.Vertex.Digest(), len(edge.Vertex.Inputs()))
 	s.mu.Lock()
 	e := s.ef.getEdge(edge)
 	if e == nil {
 		s.mu.Unlock()
 		return nil, errors.Errorf("invalid request %v for build", edge)
 	}
-	fmt.Printf("scheduler.build got edge %p for dgst %s\n", e, edge.Vertex.Digest())
+	bklog.L.Debugf("scheduler.build got edge %p for dgst %s\n", e, edge.Vertex.Digest())
 
 	wait := make(chan struct{})
 
@@ -253,7 +253,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("scheduler build index=%d dgst=%s edge=%p with pipe id=%s original context was canceled\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
+		bklog.L.Debugf("scheduler build index=%d dgst=%s edge=%p with pipe id=%s original context was canceled\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
 	}(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -261,18 +261,18 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 
 	go func() {
 		<-ctx.Done()
-		fmt.Printf("scheduler build index=%d dgst=%s edge=%p is calling cancel on pipe id=%s\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
+		bklog.L.Debugf("scheduler build index=%d dgst=%s edge=%p is calling cancel on pipe id=%s\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
 		p.Receiver.Cancel()
 	}()
 
 	<-wait
 
 	if err := p.Receiver.Status().Err; err != nil {
-		fmt.Printf("scheduler build index=%d dgst=%s edge=%p pipe id=%s got an err %v\n", edge.Index, edge.Vertex.Digest(), e, p.ID, err)
+		bklog.L.Debugf("scheduler build index=%d dgst=%s edge=%p pipe id=%s got an err %v\n", edge.Index, edge.Vertex.Digest(), e, p.ID, err)
 		return nil, err
 	}
 	res := p.Receiver.Status().Value.(*edgeState).result.CloneCachedResult()
-	fmt.Printf("scheduler build index=%d dgst=%s edge=%p pipe id=%s is ok!\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
+	bklog.L.Debugf("scheduler build index=%d dgst=%s edge=%p pipe id=%s is ok!\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
 	return res, nil
 }
 
@@ -283,7 +283,7 @@ func (s *scheduler) newPipe(target, from *edge, req pipe.Request) *pipe.Pipe {
 		Target: target,
 		From:   from,
 	}
-	fmt.Printf("newPipe from %p to %p; pipe ID=%s\n", from, target, p.Pipe.ID)
+	bklog.L.Debugf("newPipe from %p to %p; pipe ID=%s\n", from, target, p.Pipe.ID)
 
 	s.signal(target)
 	if from != nil {
@@ -310,7 +310,7 @@ func (s *scheduler) newRequestWithFunc(e *edge, f func(context.Context) (interfa
 		Pipe: pp,
 		From: e,
 	}
-	fmt.Printf("newPipeWithFunction edge=%p; pipe ID=%s\n", e, p.Pipe.ID)
+	bklog.L.Debugf("newPipeWithFunction edge=%p; pipe ID=%s\n", e, p.Pipe.ID)
 	p.OnSendCompletion = func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -323,7 +323,7 @@ func (s *scheduler) newRequestWithFunc(e *edge, f func(context.Context) (interfa
 
 // mergeTo merges the state from one edge to another. source edge is discarded.
 func (s *scheduler) mergeTo(target, src *edge) bool {
-	fmt.Printf("merging %p into %p\n", src, target)
+	bklog.L.Debugf("merging %p into %p\n", src, target)
 	if !target.edge.Vertex.Options().IgnoreCache && src.edge.Vertex.Options().IgnoreCache {
 		return false
 	}

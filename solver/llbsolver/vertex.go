@@ -9,6 +9,7 @@ import (
 	"github.com/moby/buildkit/solver"
 	"github.com/moby/buildkit/solver/llbsolver/ops/opsutils"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/moby/buildkit/util/entitlements"
 	digest "github.com/opencontainers/go-digest"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
@@ -260,7 +261,7 @@ func loadLLB(ctx context.Context, def *pb.Definition, polEngine SourcePolicyEval
 				return solver.Edge{}, errors.Wrap(err, "error evaluating the source policy")
 			}
 			if mutated {
-				fmt.Printf("mutated\n")
+				bklog.L.Debugf("mutated\n")
 				dtMutated, err := op.Marshal()
 				if err != nil {
 					return solver.Edge{}, err

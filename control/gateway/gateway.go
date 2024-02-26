@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/moby/buildkit/frontend/gateway"
 	gwapi "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/solver/errdefs"
+	"github.com/moby/buildkit/util/bklog"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -161,7 +161,7 @@ func (gwf *GatewayForwarder) Inputs(ctx context.Context, req *gwapi.InputsReques
 func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequest) (*gwapi.ReadDirResponse, error) {
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		fmt.Printf("GatewayForwarder.ReadDir %s %s got a context cancel\n", req.Ref, req.DirPath)
+		bklog.L.Debugf("GatewayForwarder.ReadDir %s %s got a context cancel\n", req.Ref, req.DirPath)
 	}(ctx)
 	fwd, err := gwf.lookupForwarder(ctx)
 	if err != nil {
@@ -172,11 +172,11 @@ func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequ
 	}
 	res, err := fwd.ReadDir(ctx, req)
 	if err != nil {
-		fmt.Printf("ReadDir %s %s got an error: %v; gonna stall here\n", req.Ref, req.DirPath, err)
+		bklog.L.Debugf("ReadDir %s %s got an error: %v; gonna stall here\n", req.Ref, req.DirPath, err)
 		stall.Store(true)
 		time.Sleep(time.Hour)
 	} else {
-		fmt.Printf("GatewayForwarder.ReadDir %s %s is ok\n", req.Ref, req.DirPath)
+		bklog.L.Debugf("GatewayForwarder.ReadDir %s %s is ok\n", req.Ref, req.DirPath)
 	}
 	return res, err
 }
