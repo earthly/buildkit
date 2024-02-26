@@ -509,6 +509,7 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	ctx, cancel := context.WithCancel(stream.Context())
 	go func() {
 		<-closeCh
+		bklog.G(ctx).Debugf("session got closeCh done, issuing cancel()")
 		cancel()
 	}()
 
