@@ -183,6 +183,9 @@ func (s *scheduler) dispatch(e *edge) {
 			// skip this if not at least 1 key per dep
 			origEdge := e.index.LoadOrStore(k, e)
 			if origEdge != nil {
+				if e.edge.Vertex.Digest() != origEdge.edge.Vertex.Digest() {
+					bklog.G(context.TODO()).Debugf("edges to merge have different digests %s vs %s", e.edge.Vertex.Digest(), origEdge.edge.Vertex.Digest())
+				}
 				if e.isDep(origEdge) || origEdge.isDep(e) {
 					bklog.G(context.TODO()).Debugf("skip merge due to dependency")
 				} else {
@@ -325,6 +328,7 @@ func (s *scheduler) newRequestWithFunc(e *edge, f func(context.Context) (interfa
 func (s *scheduler) mergeTo(target, src *edge) bool {
 	bklog.L.Debugf("merging %p into %p\n", src, target)
 	if !target.edge.Vertex.Options().IgnoreCache && src.edge.Vertex.Options().IgnoreCache {
+		bklog.L.Debugf("merging %p into %p (skipped due to ignorecache)\n", src, target)
 		return false
 	}
 	for _, inc := range s.incoming[src] {
