@@ -709,13 +709,13 @@ func (e *edge) recalcCurrentState() {
 // respondToIncoming responds to all incoming requests. completing or
 // updating them when possible
 func (e *edge) respondToIncoming(incoming []pipe.Sender, allPipes []pipe.Receiver) (edgeStatusType, bool) {
-	bklog.L.Debugf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
-	for _, req := range incoming {
-		bklog.L.Debugf("  depends on %s %+v; edgereq=%+v\n", req.DebugString(), req.Request(), req.Request().Payload.(*edgeRequest))
-	}
-	for _, req := range allPipes {
-		bklog.L.Debugf("  affects %s %+v\n", req.DebugString(), req.Request())
-	}
+	//bklog.L.Debugf("edge %p dgst=%s respondToIncoming\n", e, e.edge.Vertex.Digest())
+	//for _, req := range incoming {
+	//	bklog.L.Debugf("  depends on %s %+v; edgereq=%+v\n", req.DebugString(), req.Request(), req.Request().Payload.(*edgeRequest))
+	//}
+	//for _, req := range allPipes {
+	//	bklog.L.Debugf("  affects %s %+v\n", req.DebugString(), req.Request())
+	//}
 
 	// detect the result state for the requests
 	allIncomingCanComplete := true

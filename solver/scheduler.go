@@ -123,6 +123,16 @@ func (s *scheduler) dispatch(e *edge) {
 		out[i] = p.Receiver
 	}
 
+	// print out edge
+	bklog.L.Debugf("edge %p dgst=%s\n", e, e.edge.Vertex.Digest())
+
+	for i, p := range s.incoming[e] {
+		bklog.G(context.TODO()).Debugf("  incomming %d: ptr=%p id=%s from=%p target=%p", i, p, p.ID, p.From, p.Target)
+	}
+	for i, p := range s.outgoing[e] {
+		bklog.G(context.TODO()).Debugf("  outgoing %d: ptr=%p id=%s from=%p target=%p", i, p, p.ID, p.From, p.Target)
+	}
+
 	e.hasActiveOutgoing = false
 	updates := []pipe.Receiver{}
 	for _, p := range out {
@@ -297,7 +307,7 @@ func (s *scheduler) newPipe(target, from *edge, req pipe.Request) *pipe.Pipe {
 		}
 		s.outgoing[from] = append(s.outgoing[from], p)
 	}
-	s.incoming[target] = append(s.incoming[target], p)
+	s.incoming[target] = append(s.incoming[target], p) // TODO does this mean the pipe gets called after "target" is complete, or that "target" needs this pipe to be complete before proceeding? i.e. which direction is this?
 	p.OnReceiveCompletion = func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
