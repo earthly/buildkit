@@ -197,6 +197,7 @@ type receiver struct {
 func (pr *receiver) DebugString() string {
 	return pr.id
 }
+
 func (pr *receiver) Request() interface{} {
 	//if pr.req.Payload == nil {
 	//	// a receiver can have a nil payload when pipe.NewWithFunction(f) is called

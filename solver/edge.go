@@ -2,6 +2,7 @@ package solver
 
 import (
 	"context"
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -704,6 +705,24 @@ func (e *edge) recalcCurrentState() {
 			}
 		}
 	}
+}
+
+func edgePipeToString(e *edgePipe) string {
+	senderReqest := e.Sender.Request()
+
+	senderPayloadStr := "nil"
+	if senderReqest.Payload != nil {
+		senderPayloadStr = fmt.Sprintf("%+v", senderReqest.Payload.(*edgeRequest))
+	}
+
+	receiverRequest := e.Receiver.Request()
+	receiverReqStr := "nil"
+	if receiverRequest != nil {
+		receiverReqStr = fmt.Sprintf("%+v", receiverRequest.(*edgeRequest))
+	}
+
+	return fmt.Sprintf("ptr=%p id=%s from=%p target=%p sender_req_payload=%s sender_req_canceled=%v receiver_req=%s", e, e.ID, e.From, e.Target, senderPayloadStr, senderReqest.Canceled, receiverReqStr)
+
 }
 
 // respondToIncoming responds to all incoming requests. completing or

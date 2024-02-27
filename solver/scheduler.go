@@ -127,10 +127,10 @@ func (s *scheduler) dispatch(e *edge) {
 	bklog.L.Debugf("edge %p dgst=%s\n", e, e.edge.Vertex.Digest())
 
 	for i, p := range s.incoming[e] {
-		bklog.G(context.TODO()).Debugf("  incomming %d: ptr=%p id=%s from=%p target=%p", i, p, p.ID, p.From, p.Target)
+		bklog.G(context.TODO()).Debugf("  incomming %d: %s", i, edgePipeToString(p))
 	}
 	for i, p := range s.outgoing[e] {
-		bklog.G(context.TODO()).Debugf("  outgoing %d: ptr=%p id=%s from=%p target=%p", i, p, p.ID, p.From, p.Target)
+		bklog.G(context.TODO()).Debugf("  outgoing %d: %s", i, edgePipeToString(p))
 	}
 
 	e.hasActiveOutgoing = false
