@@ -2981,6 +2981,11 @@ func (c *lLBBridgeClient) Solve(ctx context.Context, in *SolveRequest, opts ...g
 }
 
 func (c *lLBBridgeClient) ReadFile(ctx context.Context, in *ReadFileRequest, opts ...grpc.CallOption) (*ReadFileResponse, error) {
+	fmt.Printf("lLBBridgeClient.ReadFile %+v\n", in)
+	go func() {
+		<-ctx.Done()
+		fmt.Printf("lLBBridgeClient.ReadFile %+v context done\n", in)
+	}()
 	out := new(ReadFileResponse)
 	err := c.cc.Invoke(ctx, "/moby.buildkit.v1.frontend.LLBBridge/ReadFile", in, out, opts...)
 	if err != nil {
