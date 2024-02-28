@@ -10,6 +10,7 @@ import (
 
 	controlapi "github.com/moby/buildkit/api/services/control"
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/util/bklog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -94,6 +95,7 @@ func (c *conn) Write(b []byte) (int, error) {
 func (c *conn) Close() (err error) {
 	c.closedOnce.Do(func() {
 		defer func() {
+			bklog.L.Debugf("grpchijack closing c.closeCh")
 			close(c.closeCh)
 		}()
 
@@ -102,6 +104,7 @@ func (c *conn) Close() (err error) {
 			err = cs.CloseSend()
 			c.writeMu.Unlock()
 			if err != nil {
+				bklog.L.Debugf("grpchijack here1 %v", err)
 				return
 			}
 		}
@@ -114,6 +117,7 @@ func (c *conn) Close() (err error) {
 			if err != nil {
 				if err != io.EOF {
 					c.readMu.Unlock()
+					bklog.L.Debugf("grpchijack here2 %v", err)
 					return
 				}
 				err = nil
