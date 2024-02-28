@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -109,6 +110,7 @@ func (s *Session) ID() string {
 
 // Run activates the session
 func (s *Session) Run(ctx context.Context, dialer Dialer) error {
+	fmt.Printf("session.Run called by %s\n", debug.Stack())
 	s.mu.Lock()
 	if s.closeCalled {
 		s.mu.Unlock()
@@ -139,11 +141,13 @@ func (s *Session) Run(ctx context.Context, dialer Dialer) error {
 	s.conn = conn
 	s.mu.Unlock()
 	serve(ctx, s.grpcServer, conn)
+	fmt.Printf("session.Run returning\n")
 	return nil
 }
 
 // Close closes the session
 func (s *Session) Close() error {
+	fmt.Printf("Session.Close() called\n")
 	s.mu.Lock()
 	if s.cancelCtx != nil && s.done != nil {
 		if s.conn != nil {
