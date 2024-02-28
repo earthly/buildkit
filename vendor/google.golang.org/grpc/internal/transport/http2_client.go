@@ -1618,6 +1618,7 @@ func (t *http2Client) reader(errCh chan<- error) {
 				continue
 			} else {
 				// Transport error.
+				fmt.Printf("ACB transport error %v\n", err)
 				t.Close(connectionErrorf(true, err, "error reading from server: %v", err))
 				return
 			}
