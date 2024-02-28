@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +94,7 @@ func (c *conn) Write(b []byte) (int, error) {
 }
 
 func (c *conn) Close() (err error) {
+	bklog.L.Debugf("grpchijack close called by %s", debug.Stack())
 	c.closedOnce.Do(func() {
 		defer func() {
 			bklog.L.Debugf("grpchijack closing c.closeCh")
