@@ -147,7 +147,7 @@ func (s *Session) Run(ctx context.Context, dialer Dialer) error {
 
 // Close closes the session
 func (s *Session) Close() error {
-	fmt.Printf("Session.Close() called\n")
+	fmt.Printf("Session.Close() called by %s\n", debug.Stack())
 	s.mu.Lock()
 	if s.cancelCtx != nil && s.done != nil {
 		if s.conn != nil {
