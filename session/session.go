@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -51,6 +52,7 @@ type Session struct {
 
 // NewSession returns a new long running session
 func NewSession(ctx context.Context, name, sharedKey string) (*Session, error) {
+	fmt.Printf("NewSession called\n")
 	id := identity.NewID()
 
 	var unary []grpc.UnaryServerInterceptor
