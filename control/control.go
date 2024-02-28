@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -521,11 +520,11 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 		cancel()
 	}()
 
-	go func() {
-		<-time.After(time.Second * time.Duration(rand.Intn(5)+2))
-		bklog.G(ctx).Debugf("hack hack hack issuing cancel() to break things")
-		cancel()
-	}()
+	//go func() {
+	//	<-time.After(time.Second * time.Duration(rand.Intn(5)+2))
+	//	bklog.G(ctx).Debugf("hack hack hack issuing cancel() to break things")
+	//	cancel()
+	//}()
 
 	err := c.opt.SessionManager.HandleConn(ctx, conn, opts)
 	time.Sleep(time.Millisecond * 200) // earthly hacking, see if ctx.Done() occurs first
