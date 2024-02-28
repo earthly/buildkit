@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -517,6 +518,12 @@ func (c *Controller) Session(stream controlapi.Control_SessionServer) error {
 	go func() {
 		<-closeCh
 		bklog.G(ctx).Debugf("session got closeCh done, issuing cancel()")
+		cancel()
+	}()
+
+	go func() {
+		<-time.After(time.Second * time.Duration(rand.Intn(5)+2))
+		bklog.G(ctx).Debugf("hack hack hack issuing cancel() to break things")
 		cancel()
 	}()
 

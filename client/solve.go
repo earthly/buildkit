@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -255,6 +256,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 				cancelStatus()
 			}()
 			if !opt.SessionPreInitialized {
+				fmt.Printf("stopping session\n")
 				bklog.G(ctx).Debugf("stopping session")
 				s.Close()
 			}
