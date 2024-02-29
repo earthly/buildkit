@@ -41,13 +41,13 @@ func init() {
 	e := os.Getenv("GODEBUG")
 	if strings.Contains(e, "http2debug=1") {
 		VerboseLogs = true
-		fmt.Printf("enabling VerboseLogs\n")
+		//fmt.Printf("enabling VerboseLogs\n")
 	}
 	if strings.Contains(e, "http2debug=2") {
 		VerboseLogs = true
 		logFrameWrites = true
 		logFrameReads = true
-		fmt.Printf("enabling ultraVerboseLogs\n")
+		//fmt.Printf("enabling ultraVerboseLogs\n")
 	}
 }
 
