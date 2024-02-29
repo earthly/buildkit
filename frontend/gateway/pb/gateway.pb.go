@@ -21,6 +21,7 @@ import (
 	io "io"
 	math "math"
 	math_bits "math/bits"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -2989,8 +2990,11 @@ func (c *lLBBridgeClient) ReadFile(ctx context.Context, in *ReadFileRequest, opt
 	out := new(ReadFileResponse)
 	err := c.cc.Invoke(ctx, "/moby.buildkit.v1.frontend.LLBBridge/ReadFile", in, out, opts...)
 	if err != nil {
+		time.Sleep(time.Millisecond * 20)
+		fmt.Printf("lLBBridgeClient.ReadFile %+v returning error %v\n", in, err)
 		return nil, err
 	}
+	fmt.Printf("lLBBridgeClient.ReadFile %+v returning ok\n", in)
 	return out, nil
 }
 
@@ -3004,8 +3008,11 @@ func (c *lLBBridgeClient) ReadDir(ctx context.Context, in *ReadDirRequest, opts 
 	out := new(ReadDirResponse)
 	err := c.cc.Invoke(ctx, "/moby.buildkit.v1.frontend.LLBBridge/ReadDir", in, out, opts...)
 	if err != nil {
+		time.Sleep(time.Millisecond * 20)
+		fmt.Printf("lLBBridgeClient.ReadDir %+v returning error %v\n", in, err)
 		return nil, err
 	}
+	fmt.Printf("lLBBridgeClient.ReadDir %+v returning ok\n", in)
 	return out, nil
 }
 
