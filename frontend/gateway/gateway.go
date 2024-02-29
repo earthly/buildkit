@@ -676,10 +676,14 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 		SourcePolicies: req.SourcePolicies,
 	}, lbf.sid)
 	if err != nil {
+		bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p here1 err=%v\n", req, err)
+		time.Sleep(time.Millisecond * 20)
 		return nil, lbf.wrapSolveError(err)
 	}
 
 	if len(res.Refs) > 0 && !req.AllowResultReturn {
+		bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p here2 err=%v\n", req, err)
+		time.Sleep(time.Millisecond * 20)
 		// this should never happen because old client shouldn't make a map request
 		return nil, errors.Errorf("solve did not return default result")
 	}
@@ -742,6 +746,8 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 			for _, att := range atts {
 				pbAtt, err := gwclient.AttestationToPB(&att)
 				if err != nil {
+					bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p here3 err=%v\n", req, err)
+					time.Sleep(time.Millisecond * 20)
 					return nil, err
 				}
 
@@ -767,6 +773,8 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 	if req.Final {
 		exp := map[string][]byte{}
 		if err := json.Unmarshal(req.ExporterAttr, &exp); err != nil {
+			bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p here4 err=%v\n", req, err)
+			time.Sleep(time.Millisecond * 20)
 			return nil, err
 		}
 
@@ -790,6 +798,8 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 		resp.Ref = defaultID
 	}
 
+	bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p ok\n", req)
+	time.Sleep(time.Millisecond * 5)
 	return resp, nil
 }
 
