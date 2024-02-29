@@ -808,7 +808,7 @@ func (l *listenSocket) Close() error {
 // Serve will return a non-nil error unless Stop or GracefulStop is called.
 func (s *Server) Serve(lis net.Listener) error {
 	s.mu.Lock()
-	s.printf("serving")
+	s.printf("serving\n")
 	s.serve = true
 	if s.lis == nil {
 		// Serve called after Stop or GracefulStop.

@@ -420,6 +420,7 @@ func main() {
 }
 
 func serveGRPC(cfg config.GRPCConfig, server *grpc.Server, errCh chan error) error {
+	fmt.Printf("call to serveGRPC config=%+v\n", cfg)
 	addrs := cfg.Address
 	if len(addrs) == 0 {
 		return errors.New("--addr cannot be empty")
@@ -450,6 +451,7 @@ func serveGRPC(cfg config.GRPCConfig, server *grpc.Server, errCh chan error) err
 			eg.Go(func() error {
 				defer l.Close()
 				bklog.L.Infof("running server on %s", l.Addr())
+				fmt.Printf("running server printf\n")
 				return server.Serve(l)
 			})
 		}(l)

@@ -706,6 +706,7 @@ func (sc *serverConn) vlogf(format string, args ...interface{}) {
 }
 
 func (sc *serverConn) logf(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
 	if lg := sc.hs.ErrorLog; lg != nil {
 		lg.Printf(format, args...)
 	} else {
