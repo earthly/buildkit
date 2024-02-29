@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"log"
 	"math"
 	"net"
 	"sync/atomic"
@@ -26,6 +27,8 @@ func serve(ctx context.Context, grpcServer *grpc.Server, conn net.Conn) {
 		<-ctx.Done()
 		conn.Close()
 	}()
+
+	log.Printf("testing log.Printf shows up")
 	bklog.G(ctx).Debugf("serving grpc connection")
 	(&http2.Server{}).ServeConn(conn, &http2.ServeConnOpts{Handler: grpcServer})
 }
