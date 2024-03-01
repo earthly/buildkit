@@ -273,6 +273,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 		for key, st := range opt.FrontendInputs {
 			def, err := st.Marshal(ctx)
 			if err != nil {
+				fmt.Printf("st.Marshal failed with %v\n", err)
 				return err
 			}
 			frontendInputs[key] = def.ToPB()
@@ -336,14 +337,17 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			StatsStream: true, // earthly-specific request stats be streamed back
 		})
 		if err != nil {
+			fmt.Printf("call to Status failed with %v\n", err)
 			return errors.Wrap(err, "failed to get status")
 		}
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
 				if err == io.EOF {
+					fmt.Printf("stream.Recv got EOF, exiting ok\n")
 					return nil
 				}
+				fmt.Printf("stream.Recv failed with %v\n", err)
 				return errors.Wrap(err, "failed to receive status")
 			}
 			if statusChan != nil {
