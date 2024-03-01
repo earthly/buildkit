@@ -177,7 +177,7 @@ func (b *llbBridge) loadResult(ctx context.Context, def *pb.Definition, cacheImp
 	bklog.L.Debugf("b.builder.Build def=%p digest=%s returned err=%v\n", def, edge.Vertex.Digest(), err)
 	if err != nil {
 		bklog.L.Debugf("got an error when calling build on def=%p digest=%s; gonna stall here\n\n\n", def, edge.Vertex.Digest())
-		time.Sleep(time.Hour * 24)
+		//time.Sleep(time.Hour * 24)
 		return nil, err
 	}
 	return res, nil

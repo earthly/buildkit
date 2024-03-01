@@ -173,8 +173,8 @@ func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequ
 	res, err := fwd.ReadDir(ctx, req)
 	if err != nil {
 		bklog.L.Debugf("ReadDir %s %s got an error: %v; gonna stall here\n", req.Ref, req.DirPath, err)
-		stall.Store(true)
-		time.Sleep(time.Hour)
+		//stall.Store(true)
+		//time.Sleep(time.Hour)
 	} else {
 		bklog.L.Debugf("GatewayForwarder.ReadDir %s %s is ok\n", req.Ref, req.DirPath)
 	}
