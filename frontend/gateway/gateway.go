@@ -804,7 +804,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 }
 
 func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path string) (cache.ImmutableRef, error) {
-	bklog.L.Debugf("getImmutableRef called on %s %s\n", id, path)
+	bklog.L.Debugf("getImmutableRef called on %s %s start of func\n", id, path)
 	go func() {
 		<-ctx.Done()
 		bklog.L.Debugf("getImmutableRef called on %s %s context is done\n", id, path)
@@ -814,9 +814,11 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 	ref, ok := lbf.refs[id]
 	lbf.mu.Unlock()
 	if !ok {
+		bklog.L.Debugf("getImmutableRef called on %s %s id not found\n", id, path)
 		return nil, errors.Errorf("no such ref: %s", id)
 	}
 	if ref == nil {
+		bklog.L.Debugf("getImmutableRef called on %s %s ref is nil, return err=ErrNotExist\n", id, path)
 		return nil, errors.Wrap(os.ErrNotExist, path)
 	}
 
