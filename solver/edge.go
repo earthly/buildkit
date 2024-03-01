@@ -953,6 +953,7 @@ func (e *edge) execOp(ctx context.Context) (interface{}, error) {
 	cacheKeys, inputs := e.commitOptions()
 	results, subExporters, err := e.op.Exec(ctx, toResultSlice(inputs))
 	if err != nil {
+		bklog.G(ctx).Debugf("e.op.Exec %s failed with %v", e.edge.Vertex.Name(), err)
 		return nil, errors.WithStack(err)
 	}
 
