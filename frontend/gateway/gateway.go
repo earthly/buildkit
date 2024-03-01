@@ -655,7 +655,7 @@ func (lbf *llbBridgeForwarder) Solve(ctx context.Context, req *pb.SolveRequest) 
 	bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p called by %s\n", req, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p context is done\n", req)
+		bklog.L.Debugf("llbBridgeForwarder.Solve for req=%p context is done (which is ok, because it returns a the new ID for the ref to the client)\n", req)
 	}(ctx)
 	var cacheImports []frontend.CacheOptionsEntry
 	for _, e := range req.CacheImports {
@@ -822,15 +822,17 @@ func (lbf *llbBridgeForwarder) getImmutableRef(ctx context.Context, id, path str
 
 	r, err := ref.Result(ctx)
 	if err != nil {
-		bklog.L.Debugf("getImmutableRef called on %s %s calls ref.Result got err=%v\n", id, path, err)
+		bklog.L.Debugf("getImmutableRef called on %s %s ref.Result returning err=%v\n", id, path, err)
 		return nil, lbf.wrapSolveError(err)
 	}
 
 	workerRef, ok := r.Sys().(*worker.WorkerRef)
 	if !ok {
+		bklog.L.Debugf("getImmutableRef called on %s %s calls ref.Result invalid ref\n", id, path)
 		return nil, errors.Errorf("invalid ref: %T", r.Sys())
 	}
 
+	bklog.L.Debugf("getImmutableRef called on %s %s returning ok\n", id, path)
 	return workerRef.ImmutableRef, nil
 }
 
@@ -843,10 +845,13 @@ func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileReq
 
 	ctx = tracing.ContextWithSpanFromContext(ctx, lbf.callCtx)
 
+	bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s calling getImmutableRef\n", req.Ref, req.FilePath)
 	ref, err := lbf.getImmutableRef(ctx, req.Ref, req.FilePath)
 	if err != nil {
+		bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s calling getImmutableRef failed err=%v\n", req.Ref, req.FilePath, err)
 		return nil, err
 	}
+	bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s calling getImmutableRef worked\n", req.Ref, req.FilePath)
 
 	newReq := cacheutil.ReadRequest{
 		Filename: req.FilePath,
@@ -862,15 +867,18 @@ func (lbf *llbBridgeForwarder) ReadFile(ctx context.Context, req *pb.ReadFileReq
 	if ref != nil {
 		m, err = ref.Mount(ctx, true, session.NewGroup(lbf.sid))
 		if err != nil {
+			bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s calling mount worked\n", req.Ref, req.FilePath)
 			return nil, err
 		}
 	}
 
 	dt, err := cacheutil.ReadFile(ctx, m, newReq)
 	if err != nil {
+		bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s calling cacheutil.ReadFile failed err=%v\n", req.Ref, req.FilePath, err)
 		return nil, lbf.wrapSolveError(err)
 	}
 
+	bklog.L.Debugf("llbBridgeForwarder.ReadFile called on %s %s worked returning %d bytes\n", req.Ref, req.FilePath, err, len(dt))
 	return &pb.ReadFileResponse{Data: dt}, nil
 }
 
@@ -887,6 +895,7 @@ func (lbf *llbBridgeForwarder) ReadDir(ctx context.Context, req *pb.ReadDirReque
 		bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s getImmutableRef err=%v\n", req.Ref, req.DirPath, err)
 		return nil, err
 	}
+	bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s getImmutableRef returned ok with ref=%+v\n", req.Ref, req.DirPath, ref)
 
 	newReq := cacheutil.ReadDirRequest{
 		Path:           req.DirPath,
@@ -896,14 +905,18 @@ func (lbf *llbBridgeForwarder) ReadDir(ctx context.Context, req *pb.ReadDirReque
 	if ref != nil {
 		m, err = ref.Mount(ctx, true, session.NewGroup(lbf.sid))
 		if err != nil {
+			bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s mount failed err=%v\n", req.Ref, req.DirPath, err)
 			return nil, err
 		}
 	}
+	bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s calling cacheutil.ReadDir\n", req.Ref, req.DirPath)
 	entries, err := cacheutil.ReadDir(ctx, m, newReq)
 	if err != nil {
+		bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s calling cacheutil.ReadDir failed err=%v\n", req.Ref, req.DirPath, err)
 		return nil, lbf.wrapSolveError(err)
 	}
 
+	bklog.L.Debugf("llbBridgeForwarder.ReadDir called on %s %s returning entries=%+v\n", req.Ref, req.DirPath, entries)
 	return &pb.ReadDirResponse{Entries: entries}, nil
 }
 
