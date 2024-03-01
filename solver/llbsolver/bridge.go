@@ -333,7 +333,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 	bklog.L.Debugf("resultProxy.Result id=%s called from %s\n", rp.id, debug.Stack())
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		bklog.L.Debugf("resultProxy.Result id=%s got a context cancel\n", rp.id) // this is getting cancelled
+		bklog.L.Debugf("resultProxy.Result id=%s context is done\n", rp.id) // this is getting cancelled
 	}(ctx)
 
 	defer func() {
@@ -359,6 +359,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 			select {
 			case <-ctx.Done():
 				if errdefs.IsCanceled(ctx, err) {
+					bklog.L.Debugf("resultProxy.Result id=%s calling loadResult on def=%p here1 err=%v\n", rp.id, rp.req.Definition, err)
 					return v, err
 				}
 			default:
@@ -370,6 +371,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 				v.Release(context.TODO())
 			}
 			rp.mu.Unlock()
+			bklog.L.Debugf("resultProxy.Result id=%s calling loadResult on def=%p here2 err=....\n", rp.id, rp.req.Definition)
 			return nil, errors.Errorf("evaluating released result")
 		}
 		if err == nil {
@@ -385,6 +387,7 @@ func (rp *resultProxy) Result(ctx context.Context) (res solver.CachedResult, err
 		rp.v = v
 		rp.err = err
 		rp.mu.Unlock()
+		bklog.L.Debugf("resultProxy.Result id=%s calling loadResult on def=%p here3 err=%v\n", rp.id, rp.req.Definition, err)
 		return v, err
 	})
 }

@@ -161,7 +161,7 @@ func (gwf *GatewayForwarder) Inputs(ctx context.Context, req *gwapi.InputsReques
 func (gwf *GatewayForwarder) ReadDir(ctx context.Context, req *gwapi.ReadDirRequest) (*gwapi.ReadDirResponse, error) {
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		bklog.L.Debugf("GatewayForwarder.ReadDir %s %s got a context cancel\n", req.Ref, req.DirPath)
+		bklog.L.Debugf("GatewayForwarder.ReadDir %s %s context is done\n", req.Ref, req.DirPath)
 	}(ctx)
 	fwd, err := gwf.lookupForwarder(ctx)
 	if err != nil {
