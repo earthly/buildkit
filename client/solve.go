@@ -92,6 +92,7 @@ func (c *Client) Solve(ctx context.Context, def *llb.Definition, opt SolveOpt, s
 type runGatewayCB func(ref string, s *session.Session, opts map[string]string) error
 
 func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runGatewayCB, opt SolveOpt, statusChan chan *SolveStatus) (*SolveResponse, error) {
+	fmt.Printf("client.solve called on def %+v, with opts %+v\n", def, opt)
 	if def != nil && runGateway != nil {
 		return nil, errors.New("invalid with def and cb")
 	}
@@ -232,7 +233,9 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			if sd == nil {
 				sd = grpchijack.Dialer(c.ControlClient())
 			}
-			return s.Run(statusContext, sd)
+			err := s.Run(statusContext, sd)
+			fmt.Printf("grpchijack.Dialer Run returned with err=%v\n", err)
+			return err
 		})
 	}
 
@@ -275,6 +278,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			frontendInputs[key] = def.ToPB()
 		}
 
+		fmt.Printf("calling ControlClient().Solve on ref=%s\n", ref)
 		resp, err := c.ControlClient().Solve(ctx, &controlapi.SolveRequest{
 			Ref:            ref,
 			Definition:     pbd,
@@ -290,20 +294,25 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			SourcePolicy:   opt.SourcePolicy,
 		})
 		if err != nil {
+			fmt.Printf("ControlClient().Solve on ref=%s failed with %v\n", ref, err)
 			return errors.Wrap(err, "failed to solve")
 		}
 		res = &SolveResponse{
 			ExporterResponse: resp.ExporterResponse,
 		}
+		fmt.Printf("ControlClient().Solve on ref=%s thread finished, time to clean up\n", ref)
 		return nil
 	})
 
 	if runGateway != nil {
 		eg.Go(func() error {
+			fmt.Printf("calling runGateway\n")
 			err := runGateway(ref, s, frontendAttrs)
 			if err == nil {
+				fmt.Printf("runGateway exited ok\n")
 				return nil
 			}
+			fmt.Printf("runGateway error %v\n", err)
 
 			// If the callback failed then the main
 			// `Solve` (called above) should error as
@@ -313,6 +322,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			select {
 			case <-solveCtx.Done():
 			case <-time.After(5 * time.Second):
+				fmt.Printf("runGateway calling cancelSolve\n", err)
 				cancelSolve()
 			}
 
@@ -343,6 +353,7 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 	})
 
 	if err := eg.Wait(); err != nil {
+		fmt.Printf("client.solve wait failed with err %v\n", err)
 		return nil, err
 	}
 	// Update index.json of exported cache content store
