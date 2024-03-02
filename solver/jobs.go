@@ -576,7 +576,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
-	bklog.L.Debugf("call to job.Build j=%p id=%s\n", j, j.id)
+	bklog.L.Debugf("call to job.Build j=%p id=%s e=%+v (dgst=%s name=%s)\n", j, j.id, e, e.Vertex.Digest(), e.Vertex.Name())
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		j.span = span
 	}
