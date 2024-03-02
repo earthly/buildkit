@@ -414,6 +414,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s\n", id, sessionID)
 	j, err := s.solver.NewJob(id)
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here1 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 
@@ -445,6 +446,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 
 	set, err := entitlements.WhiteList(ent, supportedEntitlements(s.entitlements))
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here2 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 	j.SetValue(keyEntitlements, set)
@@ -466,6 +468,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		// LeaseManager calls, and there is a fixed 3s timeout in
 		// GatewayForwarder on build registration.
 		if err := s.gatewayForwarder.RegisterBuild(ctx, id, fwd); err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here3 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 		defer s.gatewayForwarder.UnregisterBuild(ctx, id)
@@ -475,10 +478,12 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		rec, err1 := s.recordBuildHistory(ctx, id, req, exp, j, usage)
 		if err1 != nil {
 			defer j.CloseProgress()
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here4 err1=%v\n", id, sessionID, err1)
 			return nil, err1
 		}
 		defer func() {
 			err = rec(resProv, descref, err)
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s defered rec new err=%v\n", id, sessionID, err)
 		}()
 	}
 
@@ -491,11 +496,13 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 			err = ctx.Err()
 		}
 		if err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here5 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 	} else {
 		res, err = br.Solve(ctx, req, sessionID)
 		if err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here6 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 	}
@@ -520,17 +527,20 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		return nil
 	})
 	if err := eg.Wait(); err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here7 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 
 	resProv, err = addProvenanceToResult(res, br)
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here8 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 
 	for _, post := range post {
 		res2, err := post(ctx, resProv, s, j, usage)
 		if err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here9 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 		resProv = res2
@@ -541,16 +551,19 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		return res.Result(ctx)
 	})
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here10 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 	inp, err := result.ConvertResult(cached, func(res solver.CachedResult) (cache.ImmutableRef, error) {
 		workerRef, ok := res.Sys().(*worker.WorkerRef)
 		if !ok {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here10 errref=%v\n", id, sessionID, res.Sys())
 			return nil, errors.Errorf("invalid reference: %T", res.Sys())
 		}
 		return workerRef.ImmutableRef, nil
 	})
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here12 err1=%v\n", id, sessionID, err)
 		return nil, err
 	}
 
@@ -560,6 +573,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	if e := exp.Exporter; e != nil {
 		meta, err := runInlineCacheExporter(ctx, e, inlineCacheExporter, j, cached)
 		if err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here13 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 		for k, v := range meta {
@@ -570,12 +584,14 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 			exporterResponse, descref, err = e.Export(ctx, inp, j.SessionID)
 			return err
 		}); err != nil {
+			bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here14 err=%v\n", id, sessionID, err)
 			return nil, err
 		}
 	}
 
 	cacheExporterResponse, err := runCacheExporters(ctx, cacheExporters, j, cached, inp)
 	if err != nil {
+		bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s here15 err=%v\n", id, sessionID, err)
 		return nil, err
 	}
 
@@ -593,6 +609,8 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 			exporterResponse[k] = v
 		}
 	}
+
+	bklog.L.Debugf("llbsolver.Solve called with id=%s, sessionID=%s returning ok\n", id, sessionID)
 
 	return &client.SolveResponse{
 		ExporterResponse: exporterResponse,
