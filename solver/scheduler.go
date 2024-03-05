@@ -259,6 +259,7 @@ func (s *scheduler) build(ctx context.Context, edge Edge) (CachedResult, error) 
 	p.OnSendCompletion = func() {
 		p.Receiver.Receive()
 		if p.Receiver.Status().Completed {
+			bklog.L.Debugf("scheduler build index=%d dgst=%s edge=%p with pipe id=%s has completed\n", edge.Index, edge.Vertex.Digest(), e, p.ID)
 			close(wait)
 		}
 	}

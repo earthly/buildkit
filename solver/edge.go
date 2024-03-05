@@ -860,7 +860,7 @@ func (e *edge) createInputRequests(desiredState edgeStatusType, f *pipeFactory, 
 			addNew := true
 			if dep.req != nil && !dep.req.Status().Completed {
 				if dep.req.Request().(*edgeRequest).desiredState != desiredStateDep {
-					bklog.L.Debugf("Cancel called due to here2 %s != %s\n", dep.req.Request().(*edgeRequest).desiredState.String(), desiredStateDep.String())
+					bklog.L.Debugf("Cancel called due to here2 %s != %s (edge is %p)\n", dep.req.Request().(*edgeRequest).desiredState.String(), desiredStateDep.String(), e)
 					dep.req.Cancel()
 				} else {
 					addNew = false
@@ -872,6 +872,7 @@ func (e *edge) createInputRequests(desiredState edgeStatusType, f *pipeFactory, 
 					desiredState: desiredStateDep,
 					currentKeys:  len(dep.keys),
 				})
+				bklog.L.Debugf("Added new req after canceling previous\n")
 				e.depRequests[req] = dep
 				dep.req = req
 				addedNew = true
