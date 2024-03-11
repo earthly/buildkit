@@ -180,7 +180,6 @@ func (gs *gitSource) mountRemote(ctx context.Context, remote string, authArgs []
 			return "", nil, errors.Wrapf(err, "failed to init repo at %s", dir)
 		}
 
-		fmt.Printf("ACB hack, remote add origin %s\n", remote)
 		if _, err := git.Run(ctx, "remote", "add", "origin", remote); err != nil {
 			return "", nil, errors.Wrapf(err, "failed add origin repo at %s", dir)
 		}
