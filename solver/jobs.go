@@ -375,44 +375,18 @@ func (jl *Solver) loadUnlocked(v, parent Vertex, j *Job, cache map[Vertex]Vertex
 	dgst := v.Digest()
 	bklog.L.Debugf("loadUnlocked %s\n", dgst)
 
-	dgstWithoutCache := digest.FromBytes([]byte(fmt.Sprintf("%s-ignorecache", dgst)))
+	//dgstWithoutCache := digest.FromBytes([]byte(fmt.Sprintf("%s-ignorecache", dgst)))
 
 	// if same vertex is already loaded without cache just use that
-	st, ok := jl.actives[dgstWithoutCache]
+	//st, ok := jl.actives[dgstWithoutCache]
 
-	if ok {
-		// When matching an existing active vertext by dgstWithoutCache, set v to the
-		// existing active vertex, as otherwise the original vertex will use an
-		// incorrect digest and can incorrectly delete it while it is still in use.
-		v = st.vtx
-		dgstTrackerInst.add(dgst, "loadUnlocked-found-dgstWithoutCache")
-		bklog.L.Debugf("actives -ignorecache found %s -> %p\n", dgst, st)
+	v = &vertexWithCacheOptions{
+		Vertex: v,
+		dgst:   dgst,
+		inputs: inputs,
 	}
 
-	if !ok {
-		st, ok = jl.actives[dgst]
-		if ok {
-			bklog.L.Debugf("actives -ignorecache not found, but %s found -> %p\n", dgst, st)
-		}
-
-		dgstTrackerInst.add(dgst, "loadUnlocked-not-found-dgstWithoutCache")
-		// !ignorecache merges with ignorecache but ignorecache doesn't merge with !ignorecache
-		if ok && !st.vtx.Options().IgnoreCache && v.Options().IgnoreCache {
-			bklog.L.Debugf("ignorecache is set, changing %s to %s\n", dgst, dgstWithoutCache)
-			dgst = dgstWithoutCache
-		}
-
-		v = &vertexWithCacheOptions{
-			Vertex: v,
-			dgst:   dgst,
-			inputs: inputs,
-		}
-
-		st, ok = jl.actives[dgst]
-		if ok {
-			bklog.L.Debugf("actives %s found -> %p\n", dgst, st)
-		}
-	}
+	st, ok := jl.actives[dgst]
 
 	if !ok {
 		st = &state{
