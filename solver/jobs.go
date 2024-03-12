@@ -310,6 +310,7 @@ func (jl *Solver) getEdge(e Edge) *edge {
 }
 
 func (jl *Solver) subBuild(ctx context.Context, e Edge, parent Vertex) (CachedResult, error) {
+	// MH: Does not appear to be called in my tests
 	v, err := jl.load(e.Vertex, parent, nil)
 	if err != nil {
 		return nil, err
@@ -528,24 +529,108 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 	}
 }
 
+type dumbBuilder struct {
+	resolveOpFunc ResolveOpFunc
+	solver        *Solver
+}
+
+func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
+
+	// Ordered list of vertices to build.
+	digests, vertices := b.exploreVertices(e)
+
+	var ret CachedResult
+
+	for i, d := range digests {
+		vertex, ok := vertices[d]
+		if !ok {
+			return nil, errors.Errorf("digest %s not found", d)
+		}
+
+		defaultCache := NewInMemoryCacheManager()
+
+		st := &state{
+			opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: b.resolveOpFunc},
+			jobs:         map[*Job]struct{}{},
+			parents:      map[digest.Digest]struct{}{},
+			childVtx:     map[digest.Digest]struct{}{},
+			allPw:        map[progress.Writer]struct{}{},
+			mpw:          progress.NewMultiWriter(progress.WithMetadata("vertex", d)),
+			mspan:        tracing.NewMultiSpan(),
+			vtx:          vertex,
+			clientVertex: initClientVertex(vertex),
+			edges:        map[Index]*edge{},
+			index:        nil,
+			mainCache:    defaultCache,
+			cache:        map[string]CacheManager{},
+			solver:       b.solver,
+			origDigest:   vertex.Digest(),
+		}
+
+		fmt.Println("Processing vertex", e.Vertex.Name())
+
+		edge := st.getEdge(Index(i))
+
+		cm, err := edge.op.CacheMap(ctx, i)
+		if err != nil {
+			return nil, err
+		}
+
+		edge.cacheMap = cm.CacheMap
+
+		res, err := edge.execOp(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = res.(CachedResult)
+	}
+
+	return ret, nil
+}
+
+func (b *dumbBuilder) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
+
+	digests := []digest.Digest{e.Vertex.Digest()}
+	vertices := map[digest.Digest]Vertex{
+		e.Vertex.Digest(): e.Vertex,
+	}
+
+	for _, edge := range e.Vertex.Inputs() {
+		d, v := b.exploreVertices(edge)
+		digests = append(d, digests...)
+		for key, value := range v {
+			vertices[key] = value
+		}
+	}
+
+	return digests, vertices
+}
+
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		j.span = span
 	}
 
-	v, err := j.list.load(e.Vertex, nil, j)
-	if err != nil {
-		return nil, err
-	}
-	e.Vertex = v
-
-	res, err := j.list.s.build(ctx, e)
+	b := &dumbBuilder{resolveOpFunc: j.list.opts.ResolveOpFunc, solver: j.list}
+	res, err := b.build(ctx, e)
 	if err != nil {
 		return nil, err
 	}
 
-	j.list.mu.Lock()
-	defer j.list.mu.Unlock()
+	// v, err := j.list.load(e.Vertex, nil, j)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// e.Vertex = v
+
+	// res, err := j.list.s.build(ctx, e)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// j.list.mu.Lock()
+	// defer j.list.mu.Unlock()
 	return &withProvenance{CachedResult: res, j: j, e: e}, nil
 }
 
