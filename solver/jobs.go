@@ -532,6 +532,7 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 type dumbBuilder struct {
 	resolveOpFunc ResolveOpFunc
 	solver        *Solver
+	job           *Job
 }
 
 func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
@@ -539,9 +540,11 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 	// Ordered list of vertices to build.
 	digests, vertices := b.exploreVertices(e)
 
+	cache := map[string]CachedResult{}
+
 	var ret CachedResult
 
-	for i, d := range digests {
+	for _, d := range digests {
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
@@ -551,7 +554,6 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		st := &state{
 			opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: b.resolveOpFunc},
-			jobs:         map[*Job]struct{}{},
 			parents:      map[digest.Digest]struct{}{},
 			childVtx:     map[digest.Digest]struct{}{},
 			allPw:        map[progress.Writer]struct{}{},
@@ -560,18 +562,32 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			vtx:          vertex,
 			clientVertex: initClientVertex(vertex),
 			edges:        map[Index]*edge{},
-			index:        nil,
+			index:        b.solver.index,
 			mainCache:    defaultCache,
 			cache:        map[string]CacheManager{},
 			solver:       b.solver,
 			origDigest:   vertex.Digest(),
 		}
 
+		st.jobs = map[*Job]struct{}{
+			b.job: {},
+		}
+
 		fmt.Println("Processing vertex", e.Vertex.Name())
 
-		edge := st.getEdge(Index(i))
+		edge := st.getEdge(e.Index)
 
-		cm, err := edge.op.CacheMap(ctx, i)
+		edge.deps = make([]*dep, 0, len(edge.edge.Vertex.Inputs()))
+		inputs := edge.edge.Vertex.Inputs()
+		for i := range inputs {
+			dep := newDep(Index(i))
+			if v, ok := cache[inputs[i].Vertex.Digest().String()]; ok {
+				dep.result = NewSharedCachedResult(v)
+			}
+			edge.deps = append(edge.deps, dep)
+		}
+
+		cm, err := edge.op.CacheMap(ctx, int(e.Index))
 		if err != nil {
 			return nil, err
 		}
@@ -583,7 +599,13 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			return nil, err
 		}
 
-		ret = res.(CachedResult)
+		cachedResult := res.(CachedResult)
+
+		edge.result = NewSharedCachedResult(cachedResult)
+		edge.state = edgeStatusComplete
+
+		ret = cachedResult
+		cache[d.String()] = cachedResult
 	}
 
 	return ret, nil
@@ -612,7 +634,11 @@ func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, er
 		j.span = span
 	}
 
-	b := &dumbBuilder{resolveOpFunc: j.list.opts.ResolveOpFunc, solver: j.list}
+	b := &dumbBuilder{
+		resolveOpFunc: j.list.opts.ResolveOpFunc,
+		solver:        j.list,
+		job:           j,
+	}
 	res, err := b.build(ctx, e)
 	if err != nil {
 		return nil, err
@@ -967,6 +993,8 @@ func (s *sharedOp) CacheMap(ctx context.Context, index int) (resp *cacheMapResp,
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println(len(res), index)
 
 	if len(res) <= index {
 		return s.CacheMap(ctx, index)
