@@ -573,12 +573,12 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			b.job: {},
 		}
 
-		fmt.Println("Processing vertex", e.Vertex.Name())
+		fmt.Println("Processing vertex", vertex.Name())
 
 		edge := st.getEdge(e.Index)
 
-		edge.deps = make([]*dep, 0, len(edge.edge.Vertex.Inputs()))
-		inputs := edge.edge.Vertex.Inputs()
+		edge.deps = make([]*dep, 0, len(vertex.Inputs()))
+		inputs := vertex.Inputs()
 		for i := range inputs {
 			dep := newDep(Index(i))
 			if v, ok := cache[inputs[i].Vertex.Digest().String()]; ok {
@@ -600,6 +600,8 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 		}
 
 		cachedResult := res.(CachedResult)
+
+		b.job.pw.Write(identity.NewID(), st.clientVertex)
 
 		edge.result = NewSharedCachedResult(cachedResult)
 		edge.state = edgeStatusComplete
@@ -993,8 +995,6 @@ func (s *sharedOp) CacheMap(ctx context.Context, index int) (resp *cacheMapResp,
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println(len(res), index)
 
 	if len(res) <= index {
 		return s.CacheMap(ctx, index)
