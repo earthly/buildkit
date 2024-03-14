@@ -34,7 +34,7 @@ func newScheduler(ef edgeFactory) *scheduler {
 	}
 	s.cond = cond.NewStatefulCond(&s.mu)
 
-	go s.loop()
+	//go s.loop()
 
 	return s
 }

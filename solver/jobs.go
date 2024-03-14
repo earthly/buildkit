@@ -535,12 +535,13 @@ type dumbBuilder struct {
 	job           *Job
 }
 
+var cache = map[string]CachedResult{}
+var mu = sync.Mutex{}
+
 func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 	// Ordered list of vertices to build.
 	digests, vertices := b.exploreVertices(e)
-
-	cache := map[string]CachedResult{}
 
 	var ret CachedResult
 
@@ -573,7 +574,7 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			b.job: {},
 		}
 
-		fmt.Println("Processing vertex", vertex.Name())
+		//fmt.Println("Processing vertex", vertex.Name(), d.String())
 
 		edge := st.getEdge(e.Index)
 
@@ -594,6 +595,18 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		edge.cacheMap = cm.CacheMap
 
+		mu.Lock()
+		fmt.Println("Checking cache", d.String())
+		if r, ok := cache[d.String()]; ok {
+			fmt.Println("Cached!")
+			st.clientVertex.Cached = true
+			b.job.pw.Write(identity.NewID(), st.clientVertex)
+			ret = r
+			mu.Unlock()
+			continue
+		}
+		mu.Unlock()
+
 		res, err := edge.execOp(ctx)
 		if err != nil {
 			return nil, err
@@ -607,7 +620,11 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 		edge.state = edgeStatusComplete
 
 		ret = cachedResult
+		mu.Lock()
+
+		fmt.Println("Adding cache!", d.String())
 		cache[d.String()] = cachedResult
+		mu.Unlock()
 	}
 
 	return ret, nil
