@@ -546,6 +546,7 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 	var ret CachedResult
 
 	for _, d := range digests {
+		mu.Lock()
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
@@ -574,6 +575,8 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			b.job: {},
 		}
 
+		st.mpw.Add(b.job.pw)
+
 		//fmt.Println("Processing vertex", vertex.Name(), d.String())
 
 		edge := st.getEdge(e.Index)
@@ -595,17 +598,13 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		edge.cacheMap = cm.CacheMap
 
-		mu.Lock()
-		fmt.Println("Checking cache", d.String())
 		if r, ok := cache[d.String()]; ok {
-			fmt.Println("Cached!")
 			st.clientVertex.Cached = true
-			b.job.pw.Write(identity.NewID(), st.clientVertex)
+			st.mpw.Write(identity.NewID(), st.clientVertex)
 			ret = r
 			mu.Unlock()
 			continue
 		}
-		mu.Unlock()
 
 		res, err := edge.execOp(ctx)
 		if err != nil {
@@ -614,13 +613,12 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		cachedResult := res.(CachedResult)
 
-		b.job.pw.Write(identity.NewID(), st.clientVertex)
+		st.mpw.Write(identity.NewID(), st.clientVertex)
 
 		edge.result = NewSharedCachedResult(cachedResult)
 		edge.state = edgeStatusComplete
 
 		ret = cachedResult
-		mu.Lock()
 
 		fmt.Println("Adding cache!", d.String())
 		cache[d.String()] = cachedResult
@@ -645,7 +643,16 @@ func (b *dumbBuilder) exploreVertices(e Edge) ([]digest.Digest, map[digest.Diges
 		}
 	}
 
-	return digests, vertices
+	ret := []digest.Digest{}
+	m := map[digest.Digest]struct{}{}
+	for _, d := range digests {
+		if _, ok := m[d]; !ok {
+			ret = append(ret, d)
+			m[d] = struct{}{}
+		}
+	}
+
+	return ret, vertices
 }
 
 func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, error) {
