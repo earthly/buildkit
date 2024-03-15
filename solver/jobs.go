@@ -310,13 +310,14 @@ func (jl *Solver) getEdge(e Edge) *edge {
 }
 
 func (jl *Solver) subBuild(ctx context.Context, e Edge, parent Vertex) (CachedResult, error) {
-	// MH: Does not appear to be called in my tests
-	v, err := jl.load(e.Vertex, parent, nil)
-	if err != nil {
-		return nil, err
-	}
-	e.Vertex = v
-	return jl.s.build(ctx, e)
+	panic("dont call")
+	//// MH: Does not appear to be called in my tests
+	//v, err := jl.load(e.Vertex, parent, nil)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//e.Vertex = v
+	//return jl.s.build(ctx, e)
 }
 
 func (jl *Solver) Close() {
@@ -324,6 +325,7 @@ func (jl *Solver) Close() {
 }
 
 func (jl *Solver) load(v, parent Vertex, j *Job) (Vertex, error) {
+	panic("dont load")
 	jl.mu.Lock()
 	defer jl.mu.Unlock()
 
@@ -481,6 +483,7 @@ func (jl *Solver) NewJob(id string) (*Job, error) {
 		uniqueID:       identity.NewID(),
 	}
 	jl.jobs[id] = j
+	fmt.Printf("new progress reader created, for job %s (ptr=%p); pr=%p multireader=%p pw=%p\n", id, j, pr, pw, j.pr)
 
 	jl.updateCond.Broadcast()
 
@@ -607,7 +610,9 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 		}
 		mu.Unlock()
 
-		res, err := edge.execOp(ctx)
+		fmt.Printf("passing pw=%p to execOp\n", b.job.pw)
+
+		res, err := edge.execOp(progress.WithProgress(ctx, b.job.pw))
 		if err != nil {
 			return nil, err
 		}
@@ -719,6 +724,7 @@ func (j *Job) walkProvenance(ctx context.Context, e Edge, f func(ProvenanceProvi
 }
 
 func (j *Job) CloseProgress() {
+	fmt.Printf("CloseProgress called\n")
 	j.progressCloser()
 	j.pw.Close()
 }

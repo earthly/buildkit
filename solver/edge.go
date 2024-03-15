@@ -825,14 +825,15 @@ func (e *edge) createInputRequests(desiredState edgeStatusType, f *pipeFactory, 
 				}
 			}
 			if addNew {
-				req := f.NewInputRequest(e.edge.Vertex.Inputs()[int(dep.index)], &edgeRequest{
-					currentState: dep.edgeState,
-					desiredState: desiredStateDep,
-					currentKeys:  len(dep.keys),
-				})
-				e.depRequests[req] = dep
-				dep.req = req
-				addedNew = true
+				panic("dont call")
+				//req := f.NewInputRequest(e.edge.Vertex.Inputs()[int(dep.index)], &edgeRequest{
+				//	currentState: dep.edgeState,
+				//	desiredState: desiredStateDep,
+				//	currentKeys:  len(dep.keys),
+				//})
+				//e.depRequests[req] = dep
+				//dep.req = req
+				//addedNew = true
 			}
 		}
 		// initialize function to compute cache key based on dependency result

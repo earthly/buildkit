@@ -146,6 +146,7 @@ func (sw *streamWriter) write(dt []byte) (int, error) {
 	if len(dt) == 0 {
 		return 0, nil
 	}
+	fmt.Printf("write %s\n", dt)
 	sw.pw.Write(identity.NewID(), client.VertexLog{
 		Stream: sw.stream,
 		Data:   dt,

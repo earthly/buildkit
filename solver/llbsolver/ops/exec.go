@@ -284,6 +284,7 @@ func addDefaultEnvvar(env []string, k, v string) []string {
 }
 
 func (e *ExecOp) Exec(ctx context.Context, g session.Group, inputs []solver.Result) (results []solver.Result, err error) {
+	fmt.Printf("ExecOp called with inputs=%v\n", inputs)
 	trace.SpanFromContext(ctx).AddEvent("ExecOp started")
 
 	refs := make([]*worker.WorkerRef, len(inputs))

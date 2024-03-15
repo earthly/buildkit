@@ -2,6 +2,7 @@ package progress
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -25,6 +26,7 @@ func NewMultiReader(pr Reader) *MultiReader {
 }
 
 func (mr *MultiReader) Reader(ctx context.Context) Reader {
+	fmt.Printf("MultiReader.Reader() called\n")
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 
@@ -122,6 +124,7 @@ func (mr *MultiReader) handle() error {
 		}
 		mr.mu.Lock()
 		for _, p := range p {
+			fmt.Printf("sending progress with sys=%T to %d writers\n", p.Sys, len(mr.writers))
 			for w := range mr.writers {
 				w.writeRawProgress(p)
 			}

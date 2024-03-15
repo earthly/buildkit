@@ -2,6 +2,7 @@ package solver
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sort"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 func (j *Job) Status(ctx context.Context, statsStream bool, ch chan *client.SolveStatus) error {
 	vs := &vertexStream{cache: map[digest.Digest]*client.Vertex{}, wasCached: make(map[digest.Digest]struct{})}
+	fmt.Printf("job id=%s ptr=%p calling Reader on %p\n", j.id, j, j.pr)
 	pr := j.pr.Reader(ctx)
 	defer func() {
 		if enc := vs.encore(); len(enc) > 0 {
@@ -45,6 +47,7 @@ func (j *Job) Status(ctx context.Context, statsStream bool, ch chan *client.Solv
 		}
 		ss := &client.SolveStatus{}
 		for _, p := range p {
+			fmt.Printf("got a progress of type %T\n", p.Sys)
 			switch v := p.Sys.(type) {
 			case client.Vertex:
 				ss.Vertexes = append(ss.Vertexes, vs.append(v)...)
@@ -75,6 +78,7 @@ func (j *Job) Status(ctx context.Context, statsStream bool, ch chan *client.Solv
 				v.Vertex = vtx.(digest.Digest)
 				v.Timestamp = p.Timestamp
 				ss.Logs = append(ss.Logs, &v)
+				fmt.Printf("read vertexLog with data %s\n", v.Data)
 			case client.VertexWarning:
 				vtx, ok := p.Meta("vertex")
 				if !ok {
