@@ -529,33 +529,48 @@ func (jl *Solver) deleteIfUnreferenced(k digest.Digest, st *state) {
 	}
 }
 
-type dumbBuilder struct {
+type simpleSolver struct {
 	resolveOpFunc ResolveOpFunc
 	solver        *Solver
 	job           *Job
 }
 
-var cache = map[string]CachedResult{}
+var cache = map[string]Result{}
+var inFlight = map[string]struct{}{}
 var mu = sync.Mutex{}
 
-func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
+func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 	// Ordered list of vertices to build.
-	digests, vertices := b.exploreVertices(e)
+	digests, vertices := s.exploreVertices(e)
 
-	var ret CachedResult
+	var ret Result
 
 	for _, d := range digests {
-		mu.Lock()
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
 		}
 
+		for {
+			mu.Lock()
+			_, ok := inFlight[d.String()]
+			mu.Unlock()
+			if ok {
+				time.Sleep(100 * time.Millisecond)
+			} else {
+				break
+			}
+		}
+
+		mu.Lock()
+		inFlight[d.String()] = struct{}{}
+		mu.Unlock()
+
 		defaultCache := NewInMemoryCacheManager()
 
 		st := &state{
-			opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: b.resolveOpFunc},
+			opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: s.resolveOpFunc},
 			parents:      map[digest.Digest]struct{}{},
 			childVtx:     map[digest.Digest]struct{}{},
 			allPw:        map[progress.Writer]struct{}{},
@@ -564,71 +579,72 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 			vtx:          vertex,
 			clientVertex: initClientVertex(vertex),
 			edges:        map[Index]*edge{},
-			index:        b.solver.index,
+			index:        s.solver.index,
 			mainCache:    defaultCache,
 			cache:        map[string]CacheManager{},
-			solver:       b.solver,
+			solver:       s.solver,
 			origDigest:   vertex.Digest(),
 		}
 
 		st.jobs = map[*Job]struct{}{
-			b.job: {},
+			s.job: {},
 		}
 
-		st.mpw.Add(b.job.pw)
+		st.mpw.Add(s.job.pw)
 
-		//fmt.Println("Processing vertex", vertex.Name(), d.String())
+		notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
 
-		edge := st.getEdge(e.Index)
-
-		edge.deps = make([]*dep, 0, len(vertex.Inputs()))
-		inputs := vertex.Inputs()
-		for i := range inputs {
-			dep := newDep(Index(i))
-			if v, ok := cache[inputs[i].Vertex.Digest().String()]; ok {
-				dep.result = NewSharedCachedResult(v)
-			}
-			edge.deps = append(edge.deps, dep)
-		}
-
-		cm, err := edge.op.CacheMap(ctx, int(e.Index))
-		if err != nil {
-			return nil, err
-		}
-
-		edge.cacheMap = cm.CacheMap
-
-		if r, ok := cache[d.String()]; ok {
-			st.clientVertex.Cached = true
-			st.mpw.Write(identity.NewID(), st.clientVertex)
-			ret = r
+		mu.Lock()
+		if v, ok := cache[d.String()]; ok {
+			delete(inFlight, d.String())
 			mu.Unlock()
+			notifyCompleted(nil, true)
+			ret = v
 			continue
 		}
+		mu.Unlock()
 
-		res, err := edge.execOp(ctx)
+		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
+
+		// CacheMap populates required fields in SourceOp.
+		_, err := op.CacheMap(ctx, int(e.Index))
 		if err != nil {
 			return nil, err
 		}
 
-		cachedResult := res.(CachedResult)
+		var inDigests []string
+		for _, in := range vertex.Inputs() {
+			inDigests = append(inDigests, in.Vertex.Digest().String())
+		}
 
-		st.mpw.Write(identity.NewID(), st.clientVertex)
+		var inputs []Result
+		for _, in := range vertex.Inputs() {
+			if v, ok := cache[in.Vertex.Digest().String()]; ok {
+				inputs = append(inputs, v)
+			}
+		}
 
-		edge.result = NewSharedCachedResult(cachedResult)
-		edge.state = edgeStatusComplete
+		results, _, err := op.Exec(ctx, inputs)
+		if err != nil {
+			notifyCompleted(err, false)
+			return nil, err
+		}
 
-		ret = cachedResult
+		notifyCompleted(nil, false)
 
-		fmt.Println("Adding cache!", d.String())
-		cache[d.String()] = cachedResult
+		res := results[int(e.Index)]
+		ret = res
+
+		mu.Lock()
+		delete(inFlight, d.String())
+		cache[d.String()] = res
 		mu.Unlock()
 	}
 
-	return ret, nil
+	return NewCachedResult(ret, []ExportableCacheKey{}), nil
 }
 
-func (b *dumbBuilder) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
+func (s *simpleSolver) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
 
 	digests := []digest.Digest{e.Vertex.Digest()}
 	vertices := map[digest.Digest]Vertex{
@@ -636,7 +652,7 @@ func (b *dumbBuilder) exploreVertices(e Edge) ([]digest.Digest, map[digest.Diges
 	}
 
 	for _, edge := range e.Vertex.Inputs() {
-		d, v := b.exploreVertices(edge)
+		d, v := s.exploreVertices(edge)
 		digests = append(d, digests...)
 		for key, value := range v {
 			vertices[key] = value
@@ -660,7 +676,7 @@ func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, er
 		j.span = span
 	}
 
-	b := &dumbBuilder{
+	b := &simpleSolver{
 		resolveOpFunc: j.list.opts.ResolveOpFunc,
 		solver:        j.list,
 		job:           j,
