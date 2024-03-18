@@ -536,6 +536,8 @@ type simpleSolver struct {
 }
 
 var cache = map[string]Result{}
+var cacheDigests = map[string]string{}
+
 var inFlight = map[string]struct{}{}
 var mu = sync.Mutex{}
 
@@ -594,8 +596,36 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 
 		notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
 
+		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
+
+		// CacheMap populates required fields in SourceOp.
+		cm, err := op.CacheMap(ctx, int(e.Index))
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Println(vertex.Name())
+		fmt.Println("CacheMap Digest:", cm.Digest)
+		fmt.Println("LLB Digest:", d)
+
+		for _, in := range vertex.Inputs() {
+			fmt.Println("> input name", in.Vertex.Name())
+			fmt.Println("> input digest", in.Vertex.Digest())
+		}
+
+		for _, in := range cm.Deps {
+			fmt.Println("> CacheMap selector:", in.Selector)
+		}
+
+		fmt.Println("----")
+
+		cacheDigest := cm.Digest.String()
 		mu.Lock()
-		if v, ok := cache[d.String()]; ok {
+		cacheDigests[d.String()] = cacheDigest
+		mu.Unlock()
+
+		mu.Lock()
+		if v, ok := cache[cacheDigest]; ok {
 			delete(inFlight, d.String())
 			mu.Unlock()
 			notifyCompleted(nil, true)
@@ -604,22 +634,10 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 		}
 		mu.Unlock()
 
-		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
-
-		// CacheMap populates required fields in SourceOp.
-		_, err := op.CacheMap(ctx, int(e.Index))
-		if err != nil {
-			return nil, err
-		}
-
-		var inDigests []string
-		for _, in := range vertex.Inputs() {
-			inDigests = append(inDigests, in.Vertex.Digest().String())
-		}
-
 		var inputs []Result
 		for _, in := range vertex.Inputs() {
-			if v, ok := cache[in.Vertex.Digest().String()]; ok {
+			key := cacheDigests[in.Vertex.Digest().String()]
+			if v, ok := cache[key]; ok {
 				inputs = append(inputs, v)
 			}
 		}
@@ -637,7 +655,7 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 
 		mu.Lock()
 		delete(inFlight, d.String())
-		cache[d.String()] = res
+		cache[cacheDigest] = res
 		mu.Unlock()
 	}
 
