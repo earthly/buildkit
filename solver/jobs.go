@@ -538,6 +538,8 @@ type dumbBuilder struct {
 var cache = map[string]CachedResult{}
 var mu = sync.Mutex{}
 
+var execInProgress = map[string]struct{}{}
+
 func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 	// Ordered list of vertices to build.
@@ -546,10 +548,23 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 	var ret CachedResult
 
 	for _, d := range digests {
-		mu.Lock()
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
+		}
+
+		dgst := d.String()
+		mu.Lock()
+		// TODO: replace busy-wait loop with a wait-for-channel-to-close approach
+		for {
+			if _, shouldWait := execInProgress[dgst]; !shouldWait {
+				execInProgress[dgst] = struct{}{}
+				mu.Unlock()
+				break
+			}
+			mu.Unlock()
+			time.Sleep(time.Millisecond * 10)
+			mu.Lock()
 		}
 
 		defaultCache := NewInMemoryCacheManager()
@@ -598,16 +613,21 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		edge.cacheMap = cm.CacheMap
 
-		if r, ok := cache[d.String()]; ok {
+		if r, ok := cache[dgst]; ok {
 			st.clientVertex.Cached = true
 			st.mpw.Write(identity.NewID(), st.clientVertex)
 			ret = r
+			mu.Lock()
+			delete(execInProgress, dgst)
 			mu.Unlock()
 			continue
 		}
 
 		res, err := edge.execOp(ctx)
 		if err != nil {
+			mu.Lock()
+			delete(execInProgress, dgst)
+			mu.Unlock()
 			return nil, err
 		}
 
@@ -620,8 +640,9 @@ func (b *dumbBuilder) build(ctx context.Context, e Edge) (CachedResult, error) {
 
 		ret = cachedResult
 
-		fmt.Println("Adding cache!", d.String())
-		cache[d.String()] = cachedResult
+		mu.Lock()
+		cache[dgst] = cachedResult
+		delete(execInProgress, dgst)
 		mu.Unlock()
 	}
 
