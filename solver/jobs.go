@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
@@ -541,7 +540,7 @@ type simpleSolver struct {
 
 var cache = map[string]Result{}
 var cacheMaps = map[string]*simpleCacheMap{}
-var inFlight = map[string]struct{}{}
+var execInProgress = map[string]struct{}{}
 var mu = sync.Mutex{}
 
 type cacheMapDep struct {
@@ -563,50 +562,27 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 	var ret Result
 
 	for _, d := range digests {
+		fmt.Println()
+
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
 		}
 
+		mu.Lock()
+		// TODO: replace busy-wait loop with a wait-for-channel-to-close approach
 		for {
-			mu.Lock()
-			_, ok := inFlight[d.String()]
-			mu.Unlock()
-			if ok {
-				time.Sleep(100 * time.Millisecond)
-			} else {
+			if _, shouldWait := execInProgress[d.String()]; !shouldWait {
+				execInProgress[d.String()] = struct{}{}
+				mu.Unlock()
 				break
 			}
+			mu.Unlock()
+			time.Sleep(time.Millisecond * 10)
+			mu.Lock()
 		}
 
-		mu.Lock()
-		inFlight[d.String()] = struct{}{}
-		mu.Unlock()
-
-		defaultCache := NewInMemoryCacheManager()
-
-		st := &state{
-			opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: s.resolveOpFunc},
-			parents:      map[digest.Digest]struct{}{},
-			childVtx:     map[digest.Digest]struct{}{},
-			allPw:        map[progress.Writer]struct{}{},
-			mpw:          progress.NewMultiWriter(progress.WithMetadata("vertex", d)),
-			mspan:        tracing.NewMultiSpan(),
-			vtx:          vertex,
-			clientVertex: initClientVertex(vertex),
-			edges:        map[Index]*edge{},
-			index:        s.solver.index,
-			mainCache:    defaultCache,
-			cache:        map[string]CacheManager{},
-			solver:       s.solver,
-			origDigest:   vertex.Digest(),
-		}
-
-		st.jobs = map[*Job]struct{}{
-			s.job: {},
-		}
-
-		st.mpw.Add(s.job.pw)
+		st := s.createState(vertex)
 
 		notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
 
@@ -619,62 +595,25 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 		}
 
 		fmt.Println(vertex.Name())
-		fmt.Println("LLB digest:", d)
+		fmt.Println("LLB digest:", d.String())
 		fmt.Println("CacheMap digest:", cm.Digest)
 
-		// TODO: handle cm.Opts (CacheOpts)
-		scm := simpleCacheMap{
-			digest: cm.Digest.String(),
-			deps:   make([]cacheMapDep, len(cm.Deps)),
-			inputs: make([]string, len(cm.Deps)),
+		inputs, err := s.preprocessInputs(ctx, st, vertex, cm.CacheMap)
+		if err != nil {
+			return nil, err
 		}
-		var inputs []Result
-		for i, in := range vertex.Inputs() {
-			cacheKey, err := s.cacheKey(ctx, in.Vertex.Digest().String())
-			if err != nil {
-				return nil, err
-			}
-			mu.Lock()
-			res, ok := cache[cacheKey]
-			mu.Unlock()
-			if !ok {
-				return nil, errors.Errorf("cache key not found: %s", cacheKey)
-			}
-			dep := cm.Deps[i]
-			spew.Dump(dep)
-			if dep.PreprocessFunc != nil {
-				err = dep.PreprocessFunc(ctx, res, st)
-				if err != nil {
-					return nil, err
-				}
-			}
-			scm.deps[i] = cacheMapDep{
-				selector: dep.Selector.String(),
-			}
-			if dep.ComputeDigestFunc != nil {
-				compDigest, err := dep.ComputeDigestFunc(ctx, res, st)
-				if err != nil {
-					return nil, err
-				}
-				scm.deps[i].computed = compDigest.String()
-			}
-			scm.inputs[i] = in.Vertex.Digest().String()
-			inputs = append(inputs, res)
-		}
-		mu.Lock()
-		cacheMaps[d.String()] = &scm
-		mu.Unlock()
 
 		cacheKey, err := s.cacheKey(ctx, d.String())
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Println("Cache key", cacheKey)
+		fmt.Println("Computed cache key:", cacheKey)
 
 		mu.Lock()
 		if v, ok := cache[cacheKey]; ok && v != nil {
-			delete(inFlight, d.String())
+			fmt.Println("Cache hit!")
+			delete(execInProgress, d.String())
 			mu.Unlock()
 			notifyCompleted(nil, true)
 			ret = v
@@ -684,19 +623,20 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 
 		results, _, err := op.Exec(ctx, inputs)
 		if err != nil {
+			mu.Lock()
+			delete(execInProgress, d.String())
+			mu.Unlock()
 			notifyCompleted(err, false)
 			return nil, err
 		}
 
 		notifyCompleted(nil, false)
 
-		fmt.Println("Result length:", len(results))
-
 		res := results[int(e.Index)]
 		ret = res
 
 		mu.Lock()
-		delete(inFlight, d.String())
+		delete(execInProgress, d.String())
 		cache[cacheKey] = res
 		mu.Unlock()
 	}
@@ -704,10 +644,105 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 	return NewCachedResult(ret, []ExportableCacheKey{}), nil
 }
 
+func (s *simpleSolver) createState(vertex Vertex) *state {
+	defaultCache := NewInMemoryCacheManager()
+
+	st := &state{
+		opts:         SolverOpt{DefaultCache: defaultCache, ResolveOpFunc: s.resolveOpFunc},
+		parents:      map[digest.Digest]struct{}{},
+		childVtx:     map[digest.Digest]struct{}{},
+		allPw:        map[progress.Writer]struct{}{},
+		mpw:          progress.NewMultiWriter(progress.WithMetadata("vertex", vertex.Digest())),
+		mspan:        tracing.NewMultiSpan(),
+		vtx:          vertex,
+		clientVertex: initClientVertex(vertex),
+		edges:        map[Index]*edge{},
+		index:        s.solver.index,
+		mainCache:    defaultCache,
+		cache:        map[string]CacheManager{},
+		solver:       s.solver,
+		origDigest:   vertex.Digest(),
+	}
+
+	st.jobs = map[*Job]struct{}{
+		s.job: {},
+	}
+
+	st.mpw.Add(s.job.pw)
+
+	return st
+}
+
+func (s *simpleSolver) preprocessInputs(ctx context.Context, st *state, vertex Vertex, cm *CacheMap) ([]Result, error) {
+	// This struct is used to reconstruct a cache key from an LLB digest & all
+	// parents using consistent digests that depend on the full dependency chain.
+	// TODO: handle cm.Opts (CacheOpts)?
+	scm := simpleCacheMap{
+		digest: cm.Digest.String(),
+		deps:   make([]cacheMapDep, len(cm.Deps)),
+		inputs: make([]string, len(cm.Deps)),
+	}
+
+	var inputs []Result
+
+	for i, in := range vertex.Inputs() {
+		// Compute a cache key given the LLB digest value.
+		cacheKey, err := s.cacheKey(ctx, in.Vertex.Digest().String())
+		if err != nil {
+			return nil, err
+		}
+
+		// Lookup the result for that cache key.
+		mu.Lock()
+		res, ok := cache[cacheKey]
+		mu.Unlock()
+		if !ok {
+			return nil, errors.Errorf("cache key not found: %s", cacheKey)
+		}
+
+		dep := cm.Deps[i]
+
+		// Unlazy the result.
+		if dep.PreprocessFunc != nil {
+			err = dep.PreprocessFunc(ctx, res, st)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Add selectors (usually file references) to the struct.
+		scm.deps[i] = cacheMapDep{
+			selector: dep.Selector.String(),
+		}
+
+		// ComputeDigestFunc will usually checksum files. This is then used as
+		// part of the cache key to ensure it's consistent & distinct for this
+		// operation.
+		if dep.ComputeDigestFunc != nil {
+			compDigest, err := dep.ComputeDigestFunc(ctx, res, st)
+			if err != nil {
+				return nil, err
+			}
+			scm.deps[i].computed = compDigest.String()
+		}
+
+		// Add input references to the struct as to link dependencies.
+		scm.inputs[i] = in.Vertex.Digest().String()
+
+		// Add the cached result to the input set. These inputs are used to
+		// reconstruct dependencies (mounts, etc.) for a new container run.
+		inputs = append(inputs, res)
+	}
+
+	mu.Lock()
+	cacheMaps[vertex.Digest().String()] = &scm
+	mu.Unlock()
+
+	return inputs, nil
+}
+
 func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
 	h := sha256.New()
-
-	fmt.Println("Computing cache key")
 
 	err := s.calcCacheKey(ctx, d, h)
 	if err != nil {
@@ -724,8 +759,6 @@ func (s *simpleSolver) calcCacheKey(ctx context.Context, d string, h hash.Hash) 
 	if !ok {
 		return errors.New("missing cache map key")
 	}
-
-	spew.Dump(c)
 
 	for _, in := range c.inputs {
 		err := s.calcCacheKey(ctx, in, h)
