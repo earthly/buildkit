@@ -2,10 +2,14 @@ package solver
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"hash"
+	"io"
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/session"
@@ -536,10 +540,20 @@ type simpleSolver struct {
 }
 
 var cache = map[string]Result{}
-var cacheDigests = map[string]string{}
-
+var cacheMaps = map[string]*simpleCacheMap{}
 var inFlight = map[string]struct{}{}
 var mu = sync.Mutex{}
+
+type cacheMapDep struct {
+	selector string
+	computed string
+}
+
+type simpleCacheMap struct {
+	digest string
+	inputs []string
+	deps   []cacheMapDep
+}
 
 func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) {
 
@@ -605,27 +619,61 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 		}
 
 		fmt.Println(vertex.Name())
-		fmt.Println("CacheMap Digest:", cm.Digest)
-		fmt.Println("LLB Digest:", d)
+		fmt.Println("LLB digest:", d)
+		fmt.Println("CacheMap digest:", cm.Digest)
 
-		for _, in := range vertex.Inputs() {
-			fmt.Println("> input name", in.Vertex.Name())
-			fmt.Println("> input digest", in.Vertex.Digest())
+		// TODO: handle cm.Opts (CacheOpts)
+		scm := simpleCacheMap{
+			digest: cm.Digest.String(),
+			deps:   make([]cacheMapDep, len(cm.Deps)),
+			inputs: make([]string, len(cm.Deps)),
 		}
-
-		for _, in := range cm.Deps {
-			fmt.Println("> CacheMap selector:", in.Selector)
+		var inputs []Result
+		for i, in := range vertex.Inputs() {
+			cacheKey, err := s.cacheKey(ctx, in.Vertex.Digest().String())
+			if err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			res, ok := cache[cacheKey]
+			mu.Unlock()
+			if !ok {
+				return nil, errors.Errorf("cache key not found: %s", cacheKey)
+			}
+			dep := cm.Deps[i]
+			spew.Dump(dep)
+			if dep.PreprocessFunc != nil {
+				err = dep.PreprocessFunc(ctx, res, st)
+				if err != nil {
+					return nil, err
+				}
+			}
+			scm.deps[i] = cacheMapDep{
+				selector: dep.Selector.String(),
+			}
+			if dep.ComputeDigestFunc != nil {
+				compDigest, err := dep.ComputeDigestFunc(ctx, res, st)
+				if err != nil {
+					return nil, err
+				}
+				scm.deps[i].computed = compDigest.String()
+			}
+			scm.inputs[i] = in.Vertex.Digest().String()
+			inputs = append(inputs, res)
 		}
-
-		fmt.Println("----")
-
-		cacheDigest := cm.Digest.String()
 		mu.Lock()
-		cacheDigests[d.String()] = cacheDigest
+		cacheMaps[d.String()] = &scm
 		mu.Unlock()
 
+		cacheKey, err := s.cacheKey(ctx, d.String())
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Println("Cache key", cacheKey)
+
 		mu.Lock()
-		if v, ok := cache[cacheDigest]; ok {
+		if v, ok := cache[cacheKey]; ok && v != nil {
 			delete(inFlight, d.String())
 			mu.Unlock()
 			notifyCompleted(nil, true)
@@ -633,14 +681,6 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			continue
 		}
 		mu.Unlock()
-
-		var inputs []Result
-		for _, in := range vertex.Inputs() {
-			key := cacheDigests[in.Vertex.Digest().String()]
-			if v, ok := cache[key]; ok {
-				inputs = append(inputs, v)
-			}
-		}
 
 		results, _, err := op.Exec(ctx, inputs)
 		if err != nil {
@@ -650,16 +690,61 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 
 		notifyCompleted(nil, false)
 
+		fmt.Println("Result length:", len(results))
+
 		res := results[int(e.Index)]
 		ret = res
 
 		mu.Lock()
 		delete(inFlight, d.String())
-		cache[cacheDigest] = res
+		cache[cacheKey] = res
 		mu.Unlock()
 	}
 
 	return NewCachedResult(ret, []ExportableCacheKey{}), nil
+}
+
+func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
+	h := sha256.New()
+
+	fmt.Println("Computing cache key")
+
+	err := s.calcCacheKey(ctx, d, h)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func (s *simpleSolver) calcCacheKey(ctx context.Context, d string, h hash.Hash) error {
+	mu.Lock()
+	c, ok := cacheMaps[d]
+	mu.Unlock()
+	if !ok {
+		return errors.New("missing cache map key")
+	}
+
+	spew.Dump(c)
+
+	for _, in := range c.inputs {
+		err := s.calcCacheKey(ctx, in, h)
+		if err != nil {
+			return err
+		}
+	}
+
+	io.WriteString(h, c.digest)
+	for _, dep := range c.deps {
+		if dep.selector != "" {
+			io.WriteString(h, dep.selector)
+		}
+		if dep.computed != "" {
+			io.WriteString(h, dep.computed)
+		}
+	}
+
+	return nil
 }
 
 func (s *simpleSolver) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
