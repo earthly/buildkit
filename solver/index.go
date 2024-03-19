@@ -78,6 +78,27 @@ func (ei *edgeIndex) releaseLink(id, target string) {
 	}
 }
 
+func (ei *edgeIndex) hasNonCompletedEdge(k *CacheKey, e *edge) bool {
+	ei.mu.Lock()
+	defer ei.mu.Unlock()
+
+	// get all current edges that match the cachekey
+	ids := ei.getAllMatches(k)
+
+	for _, id := range ids {
+		if item, ok := ei.items[id]; ok {
+			if item.edge != e {
+				//fmt.Printf("found %+v\n", item.edge)
+				if item.edge == nil || item.edge.err != nil || item.edge.allDepsCompleted {
+					continue
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (ei *edgeIndex) LoadOrStore(k *CacheKey, e *edge) *edge {
 	ei.mu.Lock()
 	defer ei.mu.Unlock()

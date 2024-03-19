@@ -180,6 +180,14 @@ func (s *scheduler) dispatch(e *edge) {
 	// if keys changed there might be possiblity for merge with other edge
 	if e.keysDidChange {
 		if k := e.currentIndexKey(); k != nil {
+
+			// Earthly-specific, avoid merging any non-compelted edges
+			if e.index.hasNonCompletedEdge(k, e) {
+				//fmt.Printf("already exists, come back later\n")
+				s.signal(e)
+				return
+			}
+
 			// skip this if not at least 1 key per dep
 			origEdge := e.index.LoadOrStore(k, e)
 			if origEdge != nil {
