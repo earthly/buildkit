@@ -123,6 +123,12 @@ func (ls *localSourceHandler) CacheKey(ctx context.Context, g session.Group, ind
 		}
 		sessionID = id
 	}
+
+	// Hack: The encoded session ID here is breaking the simplified caching
+	// approach in "simple.go". However, a consistent value here is likely
+	// unreliable with multiple users. Figure out another option.
+	sessionID = "session-id"
+
 	dt, err := json.Marshal(struct {
 		SessionID       string
 		IncludePatterns []string

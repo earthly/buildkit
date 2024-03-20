@@ -67,8 +67,6 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 
 		st := s.createState(vertex)
 
-		notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
-
 		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
 
 		// Required to access cache map results on state.
@@ -80,10 +78,6 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			return nil, err
 		}
 
-		fmt.Println(vertex.Name())
-		fmt.Println("LLB digest:", d.String())
-		fmt.Println("CacheMap digest:", cm.Digest)
-
 		inputs, err := s.preprocessInputs(ctx, st, vertex, cm.CacheMap)
 		if err != nil {
 			return nil, err
@@ -94,13 +88,12 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			return nil, err
 		}
 
-		fmt.Println("Computed cache key:", cacheKey)
-
 		mu.Lock()
 		if v, ok := cache[cacheKey]; ok && v != nil {
-			fmt.Println("Cache hit!")
 			delete(execInProgress, d.String())
 			mu.Unlock()
+			ctx = progress.WithProgress(ctx, st.mpw)
+			notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
 			notifyCompleted(nil, true)
 			ret = v
 			continue
@@ -112,11 +105,8 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			mu.Lock()
 			delete(execInProgress, d.String())
 			mu.Unlock()
-			notifyCompleted(err, false)
 			return nil, err
 		}
-
-		notifyCompleted(nil, false)
 
 		res := results[int(e.Index)]
 		ret = res
@@ -130,6 +120,7 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 	return NewCachedResult(ret, []ExportableCacheKey{}), nil
 }
 
+// createState creates a new state struct with required and placeholder values.
 func (s *simpleSolver) createState(vertex Vertex) *state {
 	defaultCache := NewInMemoryCacheManager()
 
@@ -227,10 +218,12 @@ func (s *simpleSolver) preprocessInputs(ctx context.Context, st *state, vertex V
 	return inputs, nil
 }
 
+// cacheKey recursively generates a cache key based on a sequence of ancestor
+// operations & their cacheable values.
 func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
 	h := sha256.New()
 
-	err := s.calcCacheKey(ctx, d, h)
+	err := s.cacheKeyRecurse(ctx, d, h)
 	if err != nil {
 		return "", err
 	}
@@ -238,7 +231,7 @@ func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-func (s *simpleSolver) calcCacheKey(ctx context.Context, d string, h hash.Hash) error {
+func (s *simpleSolver) cacheKeyRecurse(ctx context.Context, d string, h hash.Hash) error {
 	mu.Lock()
 	c, ok := cacheMaps[d]
 	mu.Unlock()
@@ -247,7 +240,7 @@ func (s *simpleSolver) calcCacheKey(ctx context.Context, d string, h hash.Hash) 
 	}
 
 	for _, in := range c.inputs {
-		err := s.calcCacheKey(ctx, in, h)
+		err := s.cacheKeyRecurse(ctx, in, h)
 		if err != nil {
 			return err
 		}
