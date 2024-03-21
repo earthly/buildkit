@@ -16,28 +16,26 @@ import (
 )
 
 type simpleSolver struct {
-	resolveOpFunc ResolveOpFunc
-	solver        *Solver
-	job           *Job
+	resolveOpFunc   ResolveOpFunc
+	solver          *Solver
+	job             *Job
+	flightControl   *flightControl
+	resultCache     *resultCache
+	cacheKeyManager *cacheKeyManager
+	mu              sync.Mutex
 }
 
-var cache = map[string]Result{}
-var cacheMaps = map[string]*simpleCacheMap{}
-var execInProgress = map[string]struct{}{}
-var mu = sync.Mutex{}
-
-type cacheMapDep struct {
-	selector string
-	computed string
+func newSimpleSolver(resolveOpFunc ResolveOpFunc, solver *Solver) *simpleSolver {
+	return &simpleSolver{
+		cacheKeyManager: newCacheKeyManager(),
+		resultCache:     newResultCache(),
+		flightControl:   newFlightControl(time.Millisecond * 100),
+		resolveOpFunc:   resolveOpFunc,
+		solver:          solver,
+	}
 }
 
-type simpleCacheMap struct {
-	digest string
-	inputs []string
-	deps   []cacheMapDep
-}
-
-func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) {
+func (s *simpleSolver) build(ctx context.Context, job *Job, e Edge) (CachedResult, error) {
 
 	// Ordered list of vertices to build.
 	digests, vertices := s.exploreVertices(e)
@@ -50,20 +48,12 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			return nil, errors.Errorf("digest %s not found", d)
 		}
 
-		mu.Lock()
-		// TODO: replace busy-wait loop with a wait-for-channel-to-close approach
-		for {
-			if _, shouldWait := execInProgress[d.String()]; !shouldWait {
-				execInProgress[d.String()] = struct{}{}
-				mu.Unlock()
-				break
-			}
-			mu.Unlock()
-			time.Sleep(time.Millisecond * 10)
-			mu.Lock()
-		}
+		// Ensure we don't have multiple threads working on the same digest.
+		wait, done := s.flightControl.acquire(ctx, d.String())
 
-		st := s.createState(vertex)
+		<-wait
+
+		st := s.createState(vertex, job)
 
 		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
 
@@ -81,45 +71,38 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 			return nil, err
 		}
 
-		cacheKey, err := s.cacheKey(ctx, d.String())
+		cacheKey, err := s.cacheKeyManager.cacheKey(ctx, d.String())
 		if err != nil {
 			return nil, err
 		}
 
-		mu.Lock()
-		if v, ok := cache[cacheKey]; ok && v != nil {
-			delete(execInProgress, d.String())
-			mu.Unlock()
+		if v, ok := s.resultCache.get(cacheKey); ok && v != nil {
+			done()
 			ctx = progress.WithProgress(ctx, st.mpw)
 			notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
 			notifyCompleted(nil, true)
 			ret = v
 			continue
 		}
-		mu.Unlock()
 
 		results, _, err := op.Exec(ctx, inputs)
 		if err != nil {
-			mu.Lock()
-			delete(execInProgress, d.String())
-			mu.Unlock()
 			return nil, err
 		}
 
 		res := results[int(e.Index)]
 		ret = res
 
-		mu.Lock()
-		delete(execInProgress, d.String())
-		cache[cacheKey] = res
-		mu.Unlock()
+		s.resultCache.set(cacheKey, res)
+
+		done()
 	}
 
 	return NewCachedResult(ret, []ExportableCacheKey{}), nil
 }
 
 // createState creates a new state struct with required and placeholder values.
-func (s *simpleSolver) createState(vertex Vertex) *state {
+func (s *simpleSolver) createState(vertex Vertex, job *Job) *state {
 	defaultCache := NewInMemoryCacheManager()
 
 	st := &state{
@@ -140,12 +123,39 @@ func (s *simpleSolver) createState(vertex Vertex) *state {
 	}
 
 	st.jobs = map[*Job]struct{}{
-		s.job: {},
+		job: {},
 	}
 
-	st.mpw.Add(s.job.pw)
+	st.mpw.Add(job.pw)
 
 	return st
+}
+
+func (s *simpleSolver) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
+
+	digests := []digest.Digest{e.Vertex.Digest()}
+	vertices := map[digest.Digest]Vertex{
+		e.Vertex.Digest(): e.Vertex,
+	}
+
+	for _, edge := range e.Vertex.Inputs() {
+		d, v := s.exploreVertices(edge)
+		digests = append(d, digests...)
+		for key, value := range v {
+			vertices[key] = value
+		}
+	}
+
+	ret := []digest.Digest{}
+	m := map[digest.Digest]struct{}{}
+	for _, d := range digests {
+		if _, ok := m[d]; !ok {
+			ret = append(ret, d)
+			m[d] = struct{}{}
+		}
+	}
+
+	return ret, vertices
 }
 
 func (s *simpleSolver) preprocessInputs(ctx context.Context, st *state, vertex Vertex, cm *CacheMap) ([]Result, error) {
@@ -162,15 +172,13 @@ func (s *simpleSolver) preprocessInputs(ctx context.Context, st *state, vertex V
 
 	for i, in := range vertex.Inputs() {
 		// Compute a cache key given the LLB digest value.
-		cacheKey, err := s.cacheKey(ctx, in.Vertex.Digest().String())
+		cacheKey, err := s.cacheKeyManager.cacheKey(ctx, in.Vertex.Digest().String())
 		if err != nil {
 			return nil, err
 		}
 
 		// Lookup the result for that cache key.
-		mu.Lock()
-		res, ok := cache[cacheKey]
-		mu.Unlock()
+		res, ok := s.resultCache.get(cacheKey)
 		if !ok {
 			return nil, errors.Errorf("cache key not found: %s", cacheKey)
 		}
@@ -209,19 +217,45 @@ func (s *simpleSolver) preprocessInputs(ctx context.Context, st *state, vertex V
 		inputs = append(inputs, res)
 	}
 
-	mu.Lock()
-	cacheMaps[vertex.Digest().String()] = &scm
-	mu.Unlock()
+	s.cacheKeyManager.add(vertex.Digest().String(), &scm)
 
 	return inputs, nil
 }
 
+type cacheKeyManager struct {
+	cacheMaps map[string]*simpleCacheMap
+	mu        sync.Mutex
+}
+
+type cacheMapDep struct {
+	selector string
+	computed string
+}
+
+type simpleCacheMap struct {
+	digest string
+	inputs []string
+	deps   []cacheMapDep
+}
+
+func newCacheKeyManager() *cacheKeyManager {
+	return &cacheKeyManager{
+		cacheMaps: map[string]*simpleCacheMap{},
+	}
+}
+
+func (m *cacheKeyManager) add(key string, s *simpleCacheMap) {
+	m.mu.Lock()
+	m.cacheMaps[key] = s
+	m.mu.Unlock()
+}
+
 // cacheKey recursively generates a cache key based on a sequence of ancestor
 // operations & their cacheable values.
-func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
+func (m *cacheKeyManager) cacheKey(ctx context.Context, d string) (string, error) {
 	h := sha256.New()
 
-	err := s.cacheKeyRecurse(ctx, d, h)
+	err := m.cacheKeyRecurse(ctx, d, h)
 	if err != nil {
 		return "", err
 	}
@@ -229,16 +263,16 @@ func (s *simpleSolver) cacheKey(ctx context.Context, d string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-func (s *simpleSolver) cacheKeyRecurse(ctx context.Context, d string, h hash.Hash) error {
-	mu.Lock()
-	c, ok := cacheMaps[d]
-	mu.Unlock()
+func (m *cacheKeyManager) cacheKeyRecurse(ctx context.Context, d string, h hash.Hash) error {
+	m.mu.Lock()
+	c, ok := m.cacheMaps[d]
+	m.mu.Unlock()
 	if !ok {
 		return errors.New("missing cache map key")
 	}
 
 	for _, in := range c.inputs {
-		err := s.cacheKeyRecurse(ctx, in, h)
+		err := m.cacheKeyRecurse(ctx, in, h)
 		if err != nil {
 			return err
 		}
@@ -257,29 +291,78 @@ func (s *simpleSolver) cacheKeyRecurse(ctx context.Context, d string, h hash.Has
 	return nil
 }
 
-func (s *simpleSolver) exploreVertices(e Edge) ([]digest.Digest, map[digest.Digest]Vertex) {
+type flightControl struct {
+	wait   time.Duration
+	active map[string]struct{}
+	mu     sync.Mutex
+}
 
-	digests := []digest.Digest{e.Vertex.Digest()}
-	vertices := map[digest.Digest]Vertex{
-		e.Vertex.Digest(): e.Vertex,
+func newFlightControl(wait time.Duration) *flightControl {
+	return &flightControl{wait: wait, active: map[string]struct{}{}}
+}
+
+func (f *flightControl) acquire(ctx context.Context, d string) (<-chan struct{}, func()) {
+
+	ch := make(chan struct{})
+
+	closer := func() {
+		f.mu.Lock()
+		delete(f.active, d)
+		f.mu.Unlock()
 	}
 
-	for _, edge := range e.Vertex.Inputs() {
-		d, v := s.exploreVertices(edge)
-		digests = append(d, digests...)
-		for key, value := range v {
-			vertices[key] = value
+	go func() {
+		tick := time.NewTicker(f.wait)
+		defer tick.Stop()
+		// A function is used here as the above ticker does not execute
+		// immediately.
+		check := func() bool {
+			f.mu.Lock()
+			if _, ok := f.active[d]; !ok {
+				f.active[d] = struct{}{}
+				close(ch)
+				f.mu.Unlock()
+				return true
+			}
+			f.mu.Unlock()
+			return false
 		}
-	}
-
-	ret := []digest.Digest{}
-	m := map[digest.Digest]struct{}{}
-	for _, d := range digests {
-		if _, ok := m[d]; !ok {
-			ret = append(ret, d)
-			m[d] = struct{}{}
+		if check() {
+			return
 		}
-	}
+		for {
+			select {
+			case <-tick.C:
+				if check() {
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
-	return ret, vertices
+	return ch, closer
+}
+
+type resultCache struct {
+	cache map[string]Result
+	mu    sync.Mutex
+}
+
+func newResultCache() *resultCache {
+	return &resultCache{cache: map[string]Result{}}
+}
+
+func (c *resultCache) set(key string, r Result) {
+	c.mu.Lock()
+	c.cache[key] = r
+	c.mu.Unlock()
+}
+
+func (c *resultCache) get(key string) (Result, bool) {
+	c.mu.Lock()
+	r, ok := c.cache[key]
+	c.mu.Unlock()
+	return r, ok
 }
