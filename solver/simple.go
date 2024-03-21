@@ -45,8 +45,6 @@ func (s *simpleSolver) build(ctx context.Context, e Edge) (CachedResult, error) 
 	var ret Result
 
 	for _, d := range digests {
-		fmt.Println()
-
 		vertex, ok := vertices[d]
 		if !ok {
 			return nil, errors.Errorf("digest %s not found", d)
