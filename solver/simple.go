@@ -48,57 +48,63 @@ func (s *simpleSolver) build(ctx context.Context, job *Job, e Edge) (CachedResul
 			return nil, errors.Errorf("digest %s not found", d)
 		}
 
-		// Ensure we don't have multiple threads working on the same digest.
-		wait, done := s.flightControl.acquire(ctx, d.String())
-
-		<-wait
-
-		st := s.createState(vertex, job)
-
-		op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
-
-		// Required to access cache map results on state.
-		st.op = op
-
-		// CacheMap populates required fields in SourceOp.
-		cm, err := op.CacheMap(ctx, int(e.Index))
+		res, err := s.buildOne(ctx, d, vertex, job, e)
 		if err != nil {
 			return nil, err
 		}
 
-		inputs, err := s.preprocessInputs(ctx, st, vertex, cm.CacheMap)
-		if err != nil {
-			return nil, err
-		}
-
-		cacheKey, err := s.cacheKeyManager.cacheKey(ctx, d.String())
-		if err != nil {
-			return nil, err
-		}
-
-		if v, ok := s.resultCache.get(cacheKey); ok && v != nil {
-			done()
-			ctx = progress.WithProgress(ctx, st.mpw)
-			notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
-			notifyCompleted(nil, true)
-			ret = v
-			continue
-		}
-
-		results, _, err := op.Exec(ctx, inputs)
-		if err != nil {
-			return nil, err
-		}
-
-		res := results[int(e.Index)]
 		ret = res
-
-		s.resultCache.set(cacheKey, res)
-
-		done()
 	}
 
 	return NewCachedResult(ret, []ExportableCacheKey{}), nil
+}
+
+func (s *simpleSolver) buildOne(ctx context.Context, d digest.Digest, vertex Vertex, job *Job, e Edge) (Result, error) {
+	// Ensure we don't have multiple threads working on the same digest.
+	wait, done := s.flightControl.acquire(ctx, d.String())
+	defer done()
+	<-wait
+
+	st := s.createState(vertex, job)
+
+	op := newSharedOp(st.opts.ResolveOpFunc, st.opts.DefaultCache, st)
+
+	// Required to access cache map results on state.
+	st.op = op
+
+	// CacheMap populates required fields in SourceOp.
+	cm, err := op.CacheMap(ctx, int(e.Index))
+	if err != nil {
+		return nil, err
+	}
+
+	inputs, err := s.preprocessInputs(ctx, st, vertex, cm.CacheMap)
+	if err != nil {
+		return nil, err
+	}
+
+	cacheKey, err := s.cacheKeyManager.cacheKey(ctx, d.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if v, ok := s.resultCache.get(cacheKey); ok && v != nil {
+		ctx = progress.WithProgress(ctx, st.mpw)
+		notifyCompleted := notifyStarted(ctx, &st.clientVertex, true)
+		notifyCompleted(nil, true)
+		return v, nil
+	}
+
+	results, _, err := op.Exec(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	res := results[int(e.Index)]
+
+	s.resultCache.set(cacheKey, res)
+
+	return res, nil
 }
 
 // createState creates a new state struct with required and placeholder values.
