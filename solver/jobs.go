@@ -42,6 +42,8 @@ type Solver struct {
 	updateCond *sync.Cond
 	s          *scheduler
 	index      *edgeIndex
+
+	simple *simpleSolver
 }
 
 type state struct {
@@ -268,6 +270,13 @@ func NewSolver(opts SolverOpt) *Solver {
 		opts:    opts,
 		index:   newEdgeIndex(),
 	}
+
+	// TODO: This should be hoisted up a few layers as not to be bound to the
+	// original solver. For now, we just need a convenient place to initialize
+	// it once.
+	simple := newSimpleSolver(opts.ResolveOpFunc, jl)
+	jl.simple = simple
+
 	jl.s = newScheduler(jl)
 	jl.updateCond = sync.NewCond(jl.mu.RLocker())
 	return jl
@@ -534,15 +543,13 @@ func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, er
 		j.span = span
 	}
 
-	b := &simpleSolver{
-		resolveOpFunc: j.list.opts.ResolveOpFunc,
-		solver:        j.list,
-		job:           j,
-	}
-	res, err := b.build(ctx, e)
+	// TODO: Separate the new solver code from the original Solver & Job code.
+	res, err := j.list.simple.build(ctx, j, e)
 	if err != nil {
 		return nil, err
 	}
+
+	// MH: Previous solver code is disabled below.
 
 	// v, err := j.list.load(e.Vertex, nil, j)
 	// if err != nil {
@@ -557,6 +564,7 @@ func (j *Job) Build(ctx context.Context, e Edge) (CachedResultWithProvenance, er
 
 	// j.list.mu.Lock()
 	// defer j.list.mu.Unlock()
+
 	return &withProvenance{CachedResult: res, j: j, e: e}, nil
 }
 
