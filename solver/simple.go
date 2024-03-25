@@ -19,7 +19,7 @@ type simpleSolver struct {
 	resolveOpFunc   ResolveOpFunc
 	solver          *Solver
 	job             *Job
-	flightControl   *flightControl
+	parallelGuard   *parallelGuard
 	resultCache     *resultCache
 	cacheKeyManager *cacheKeyManager
 	mu              sync.Mutex
@@ -29,7 +29,7 @@ func newSimpleSolver(resolveOpFunc ResolveOpFunc, solver *Solver) *simpleSolver 
 	return &simpleSolver{
 		cacheKeyManager: newCacheKeyManager(),
 		resultCache:     newResultCache(),
-		flightControl:   newFlightControl(time.Millisecond * 100),
+		parallelGuard:   newParallelGuard(time.Millisecond * 100),
 		resolveOpFunc:   resolveOpFunc,
 		solver:          solver,
 	}
@@ -61,7 +61,7 @@ func (s *simpleSolver) build(ctx context.Context, job *Job, e Edge) (CachedResul
 
 func (s *simpleSolver) buildOne(ctx context.Context, d digest.Digest, vertex Vertex, job *Job, e Edge) (Result, error) {
 	// Ensure we don't have multiple threads working on the same digest.
-	wait, done := s.flightControl.acquire(ctx, d.String())
+	wait, done := s.parallelGuard.acquire(ctx, d.String())
 	defer done()
 	<-wait
 
@@ -297,17 +297,17 @@ func (m *cacheKeyManager) cacheKeyRecurse(ctx context.Context, d string, h hash.
 	return nil
 }
 
-type flightControl struct {
+type parallelGuard struct {
 	wait   time.Duration
 	active map[string]struct{}
 	mu     sync.Mutex
 }
 
-func newFlightControl(wait time.Duration) *flightControl {
-	return &flightControl{wait: wait, active: map[string]struct{}{}}
+func newParallelGuard(wait time.Duration) *parallelGuard {
+	return &parallelGuard{wait: wait, active: map[string]struct{}{}}
 }
 
-func (f *flightControl) acquire(ctx context.Context, d string) (<-chan struct{}, func()) {
+func (f *parallelGuard) acquire(ctx context.Context, d string) (<-chan struct{}, func()) {
 
 	ch := make(chan struct{})
 
